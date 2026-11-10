@@ -16,58 +16,50 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      
+      console.log("1. Текущий пользователь:", user) // Смотрим, кто вошел
+
       if (!user) {
         router.push('/login')
         return
       }
 
       // 1. Получаем профиль
-      const { data: profileData } = await supabase
+      const { data: profileData, error: profileError } = await supabase
         .from('hw_profiles')
         .select('full_name, role')
         .eq('id', user.id)
         .single()
 
+      console.log("2. Профиль:", profileData, "Ошибка:", profileError)
       setProfile(profileData)
 
-      // 2. Если это ученик, загружаем его ДЗ (ПРОСТЫМ ЗАПРОСОМ)
+      // 2. Если это ученик, загружаем его ДЗ
       if (profileData?.role === 'student') {
-        // Сначала получаем связи ученика с ДЗ
         const { data: links, error: linksError } = await supabase
           .from('hw_assignment_students')
           .select('*')
           .eq('student_id', user.id)
         
-        if (linksError) {
-          console.error("Ошибка загрузки связей:", linksError)
-        }
+        console.log("3. Связи с ДЗ:", links, "Ошибка:", linksError)
 
         if (links && links.length > 0) {
-          // Собираем ID ДЗ, которые назначены ученику
           const assignmentIds = links.map(l => l.assignment_id)
           
-          // Загружаем сами ДЗ
           const { data: assignmentsData, error: assignError } = await supabase
             .from('hw_assignments')
             .select('*')
             .in('id', assignmentIds)
             
-          if (assignError) {
-            console.error("Ошибка загрузки ДЗ:", assignError)
-          }
+          console.log("4. Данные ДЗ:", assignmentsData, "Ошибка:", assignError)
 
-          // Загружаем количество задач в каждом ДЗ
           const { data: tasksData } = await supabase
             .from('hw_assignment_tasks')
             .select('assignment_id')
             .in('assignment_id', assignmentIds)
 
-          // Объединяем данные
           const combined = links.map(link => {
             const assignment = assignmentsData?.find(a => a.id === link.assignment_id)
             const taskCount = tasksData?.filter(t => t.assignment_id === link.assignment_id).length || 0
-            
             return {
               ...link,
               title: assignment?.title || 'Без названия',
@@ -75,11 +67,10 @@ export default function DashboardPage() {
               taskCount: taskCount
             }
           })
-
+          console.log("5. Итоговый список:", combined)
           setStudentAssignments(combined)
         }
       }
-
       setLoading(false)
     }
 
