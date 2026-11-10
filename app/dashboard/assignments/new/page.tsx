@@ -31,14 +31,20 @@ export default function NewAssignmentPage() {
   // Загружаем темы со всеми подтемами и учеников
   useEffect(() => {
     const fetchData = async () => {
-      // Загружаем темы и вложенные подтемы
-      const { data: topicsData } = await supabase
+      // 1. Загружаем темы и вложенные подтемы
+      const { data: topicsData, error: topicsError } = await supabase
         .from('hw_topics')
-        .select('*, hw_subtopics(*), hw_tasks(count)')
+        .select('*, hw_subtopics(*)')
         .order('topic_number')
-      if (topicsData) setTopics(topicsData)
+      
+      if (topicsError) {
+        console.error("Ошибка загрузки тем:", topicsError)
+        setError('Ошибка загрузки тем: ' + topicsError.message)
+      } else if (topicsData) {
+        setTopics(topicsData)
+      }
 
-      // Загружаем учеников
+      // 2. Загружаем учеников
       const { data: studentsData } = await supabase
         .from('hw_profiles')
         .select('id, full_name, email')
@@ -108,7 +114,7 @@ export default function NewAssignmentPage() {
       }
 
       if (taskIdsToAssign.length === 0) {
-        throw new Error('В выбранных подтемах нет заданий в библиотеке')
+        throw new Error('В выбранных подтемах нет заданий в библиотеке. Сначала добавьте задания.')
       }
 
       // 2. Создаем ДЗ
@@ -183,7 +189,9 @@ export default function NewAssignmentPage() {
                     <div className="font-bold text-gray-800">
                       {topic.topic_number ? `№${topic.topic_number} ` : ''}{topic.title}
                     </div>
-                    <span className="text-xs text-gray-500">{topic.hw_tasks?.[0]?.count || 0} шт. в библиотеке</span>
+                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+                      {topic.exam_type === 'ege' ? 'ЕГЭ' : 'ОГЭ'}
+                    </span>
                   </div>
                   
                   <div className="divide-y">
