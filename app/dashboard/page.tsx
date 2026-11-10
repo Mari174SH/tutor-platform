@@ -16,58 +16,69 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      console.log("1. Текущий пользователь:", user) // Смотрим, кто вошел
+      if (!user) return router.push('/login')
 
-      if (!user) {
-        router.push('/login')
-        return
-      }
-
-      // 1. Получаем профиль
-      const { data: profileData, error: profileError } = await supabase
+      const { data: profileData } = await supabase
         .from('hw_profiles')
         .select('full_name, role')
         .eq('id', user.id)
         .single()
 
-      console.log("2. Профиль:", profileData, "Ошибка:", profileError)
       setProfile(profileData)
 
-      // 2. Если это ученик, загружаем его ДЗ
       if (profileData?.role === 'student') {
-        const { data: links, error: linksError } = await supabase
+        // 1. Получаем связи ученика с ДЗ
+        const { data: links } = await supabase
           .from('hw_assignment_students')
           .select('*')
           .eq('student_id', user.id)
         
-        console.log("3. Связи с ДЗ:", links, "Ошибка:", linksError)
-
         if (links && links.length > 0) {
           const assignmentIds = links.map(l => l.assignment_id)
           
-          const { data: assignmentsData, error: assignError } = await supabase
+          // 2. Получаем сами ДЗ
+          const { data: assignmentsData } = await supabase
             .from('hw_assignments')
             .select('*')
             .in('id', assignmentIds)
-            
-          console.log("4. Данные ДЗ:", assignmentsData, "Ошибка:", assignError)
 
+          // 3. Получаем количество задач в каждом ДЗ
           const { data: tasksData } = await supabase
             .from('hw_assignment_tasks')
             .select('assignment_id')
             .in('assignment_id', assignmentIds)
 
+          // 4. Получаем ответы ученика (для подсчета процентов)
+          const { data: submissionsData } = await supabase
+            .from('hw_submissions')
+            .select('assignment_id, is_correct')
+            .eq('student_id', user.id)
+
           const combined = links.map(link => {
             const assignment = assignmentsData?.find(a => a.id === link.assignment_id)
-            const taskCount = tasksData?.filter(t => t.assignment_id === link.assignment_id).length || 0
+            const totalTasks = tasksData?.filter(t => t.assignment_id === link.assignment_id).length || 0
+            
+            // Считаем правильные и проверенные ответы
+            const mySubmissions = submissionsData?.filter(s => s.assignment_id === link.assignment_id) || []
+            const checkedSubmissions = mySubmissions.filter(s => s.is_correct !== null)
+            const correctSubmissions = checkedSubmissions.filter(s => s.is_correct === true)
+
+            // Процент правильности (только если есть проверенные ответы)
+            const percent = checkedSubmissions.length > 0 
+              ? Math.round((correctSubmissions.length / checkedSubmissions.length) * 100) 
+              : null
+
             return {
               ...link,
               title: assignment?.title || 'Без названия',
               description: assignment?.description || '',
-              taskCount: taskCount
+              totalTasks: totalTasks,
+              checkedCount: checkedSubmissions.length,
+              correctCount: correctSubmissions.length,
+              percent: percent
             }
           })
-          console.log("5. Итоговый список:", combined)
+
           setStudentAssignments(combined)
         }
       }
@@ -82,13 +93,9 @@ export default function DashboardPage() {
     router.push('/login')
   }
 
-  if (loading) {
-    return <div className="flex min-h-screen items-center justify-center">Загрузка...</div>
-  }
+  if (loading) return <div className="flex min-h-screen items-center justify-center">Загрузка...</div>
 
-  // ==========================================
   // ИНТЕРФЕЙС УЧЕНИКА
-  // ==========================================
   if (profile?.role === 'student') {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -113,33 +120,51 @@ export default function DashboardPage() {
             ) : (
               studentAssignments.map((item) => {
                 const isOverdue = item.deadline && new Date(item.deadline) < new Date()
+                const isCompleted = item.checkedCount > 0
 
                 return (
-                  <div key={item.id} className="rounded-lg bg-white p-6 shadow border border-gray-100 flex justify-between items-center">
-                    <div>
-                      <h2 className="text-lg font-bold text-gray-900">{item.title}</h2>
-                      <p className="text-sm text-gray-500 mt-1">{item.description || 'Без описания'}</p>
-                      
-                      <div className="flex gap-4 mt-3 text-sm">
-                        <span className="text-gray-600">Задач: <strong>{item.taskCount}</strong></span>
-                        <span className="text-gray-600">Попыток: <strong>{item.attempts_allowed}</strong></span>
-                        {item.deadline && (
-                          <span className={isOverdue ? 'text-red-600 font-medium' : 'text-gray-600'}>
-                            Дедлайн: {new Date(item.deadline).toLocaleString('ru-RU')}
-                            {isOverdue && ' (просрочено)'}
-                          </span>
-                        )}
+                  <div key={item.id} className="rounded-lg bg-white p-6 shadow border border-gray-100">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h2 className="text-lg font-bold text-gray-900">{item.title}</h2>
+                        <p className="text-sm text-gray-500 mt-1">{item.description || 'Без описания'}</p>
                       </div>
+                      <Link 
+                        href={`/dashboard/student-assignment/${item.assignment_id}`}
+                        className={`rounded-md px-4 py-2 text-sm font-medium text-white ${
+                          isOverdue ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-500'
+                        }`}
+                      >
+                        {isOverdue ? 'Посмотреть' : isCompleted ? 'Результаты' : 'Решить'}
+                      </Link>
+                    </div>
+                    
+                    <div className="flex gap-4 text-sm text-gray-600 mb-4">
+                      <span>Задач: <strong>{item.totalTasks}</strong></span>
+                      {item.deadline && (
+                        <span className={isOverdue ? 'text-red-600 font-medium' : ''}>
+                          Дедлайн: {new Date(item.deadline).toLocaleString('ru-RU')}
+                        </span>
+                      )}
                     </div>
 
-                    <Link 
-                      href={`/dashboard/student-assignment/${item.assignment_id}`}
-                      className={`rounded-md px-4 py-2 text-sm font-medium text-white ${
-                        isOverdue ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-500'
-                      }`}
-                    >
-                      {isOverdue ? 'Посмотреть' : 'Решить'}
-                    </Link>
+                    {/* Прогресс-бар правильности */}
+                    {isCompleted && (
+                      <div className="mt-4 pt-4 border-t border-gray-100">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-sm font-medium text-gray-700">Правильность</span>
+                          <span className={`text-sm font-bold ${item.percent >= 80 ? 'text-green-600' : item.percent >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                            {item.percent}% ({item.correctCount} из {item.checkedCount})
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2.5">
+                          <div 
+                            className={`h-2.5 rounded-full ${item.percent >= 80 ? 'bg-green-500' : item.percent >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} 
+                            style={{ width: `${item.percent}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )
               })
@@ -150,9 +175,7 @@ export default function DashboardPage() {
     )
   }
 
-  // ==========================================
   // ИНТЕРФЕЙС РЕПЕТИТОРА
-  // ==========================================
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white shadow-sm">
