@@ -18,7 +18,6 @@ export default function AssignmentDetailsPage() {
 
   useEffect(() => {
     const fetchData = async () => {
-      // 1. Загружаем ДЗ
       const { data: assignData } = await supabase
         .from('hw_assignments')
         .select('*')
@@ -26,7 +25,6 @@ export default function AssignmentDetailsPage() {
         .single()
       if (assignData) setAssignment(assignData)
 
-      // 2. Загружаем учеников, которым назначено ДЗ
       const { data: studentLinks } = await supabase
         .from('hw_assignment_students')
         .select('*, hw_profiles(full_name)')
@@ -42,7 +40,6 @@ export default function AssignmentDetailsPage() {
     fetchData()
   }, [assignmentId, supabase])
 
-  // Загружаем ответы выбранного ученика
   useEffect(() => {
     if (!selectedStudentId) return
 
@@ -72,7 +69,6 @@ export default function AssignmentDetailsPage() {
     fetchStudentAnswers()
   }, [selectedStudentId, assignmentId, supabase])
 
-  // Функция для ручной проверки (ставить галочку верно/неверно)
   const handleMarkCorrect = async (submissionId: number, isCorrect: boolean) => {
     const { error } = await supabase
       .from('hw_submissions')
@@ -86,10 +82,22 @@ export default function AssignmentDetailsPage() {
         }
         return t
       }))
-    } else {
-      alert('Ошибка при сохранении оценки: ' + error.message)
     }
   }
+
+  // Подсчет статистики для выбранного ученика
+  const stats = useMemo(() => {
+    const checked = studentTasks.filter(t => t.submission && t.submission.is_correct !== null)
+    const correct = checked.filter(t => t.submission.is_correct === true)
+    const total = studentTasks.length
+    
+    return {
+      total,
+      checkedCount: checked.length,
+      correctCount: correct.length,
+      percent: checked.length > 0 ? Math.round((correct.length / checked.length) * 100) : 0
+    }
+  }, [studentTasks])
 
   if (loading) return <div className="p-8 text-center">Загрузка...</div>
 
@@ -124,6 +132,31 @@ export default function AssignmentDetailsPage() {
 
           {/* Правая колонка: задания и ответы */}
           <div className="md:col-span-3 space-y-4">
+            
+            {/* Блок статистики */}
+            {selectedStudentId && (
+              <div className="bg-white rounded-lg shadow p-4 border border-gray-200 flex items-center gap-6">
+                <div>
+                  <p className="text-sm text-gray-500">Успеваемость</p>
+                  <p className={`text-2xl font-bold ${stats.percent >= 80 ? 'text-green-600' : stats.percent >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                    {stats.percent}%
+                  </p>
+                </div>
+                <div className="flex-1">
+                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                    <span>Верно: {stats.correctCount}</span>
+                    <span>Проверено: {stats.checkedCount} из {stats.total}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full ${stats.percent >= 80 ? 'bg-green-500' : stats.percent >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} 
+                      style={{ width: `${stats.percent}%` }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {selectedStudentId ? (
               studentTasks.map((task, index) => (
                 <div key={task.id} className="bg-white rounded-lg shadow border border-gray-200 p-6">
@@ -170,9 +203,6 @@ export default function AssignmentDetailsPage() {
                           >
                             Неверно
                           </button>
-                          {task.submission.is_correct === null && (
-                            <span className="text-xs text-gray-500 ml-2">Автопроверка не сработала (или ручной ответ)</span>
-                          )}
                         </div>
                       </div>
                     ) : (
