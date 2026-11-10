@@ -22,28 +22,62 @@ export default function DashboardPage() {
         return
       }
 
-      // Получаем профиль
-      const { data } = await supabase
+      // 1. Получаем профиль
+      const { data: profileData } = await supabase
         .from('hw_profiles')
         .select('full_name, role')
         .eq('id', user.id)
         .single()
 
-      setProfile(data)
+      setProfile(profileData)
 
-      // Если это ученик, загружаем его ДЗ
-      if (data?.role === 'student') {
-        const { data: assignments } = await supabase
+      // 2. Если это ученик, загружаем его ДЗ (ПРОСТЫМ ЗАПРОСОМ)
+      if (profileData?.role === 'student') {
+        // Сначала получаем связи ученика с ДЗ
+        const { data: links, error: linksError } = await supabase
           .from('hw_assignment_students')
-          .select(`
-            *,
-            hw_assignments (id, title, description),
-            hw_assignment_tasks (count)
-          `)
+          .select('*')
           .eq('student_id', user.id)
-          .order('deadline', { ascending: true })
+        
+        if (linksError) {
+          console.error("Ошибка загрузки связей:", linksError)
+        }
 
-        if (assignments) setStudentAssignments(assignments)
+        if (links && links.length > 0) {
+          // Собираем ID ДЗ, которые назначены ученику
+          const assignmentIds = links.map(l => l.assignment_id)
+          
+          // Загружаем сами ДЗ
+          const { data: assignmentsData, error: assignError } = await supabase
+            .from('hw_assignments')
+            .select('*')
+            .in('id', assignmentIds)
+            
+          if (assignError) {
+            console.error("Ошибка загрузки ДЗ:", assignError)
+          }
+
+          // Загружаем количество задач в каждом ДЗ
+          const { data: tasksData } = await supabase
+            .from('hw_assignment_tasks')
+            .select('assignment_id')
+            .in('assignment_id', assignmentIds)
+
+          // Объединяем данные
+          const combined = links.map(link => {
+            const assignment = assignmentsData?.find(a => a.id === link.assignment_id)
+            const taskCount = tasksData?.filter(t => t.assignment_id === link.assignment_id).length || 0
+            
+            return {
+              ...link,
+              title: assignment?.title || 'Без названия',
+              description: assignment?.description || '',
+              taskCount: taskCount
+            }
+          })
+
+          setStudentAssignments(combined)
+        }
       }
 
       setLoading(false)
@@ -87,18 +121,16 @@ export default function DashboardPage() {
               </div>
             ) : (
               studentAssignments.map((item) => {
-                const assignment = item.hw_assignments
-                const taskCount = item.hw_assignment_tasks?.[0]?.count || 0
                 const isOverdue = item.deadline && new Date(item.deadline) < new Date()
 
                 return (
                   <div key={item.id} className="rounded-lg bg-white p-6 shadow border border-gray-100 flex justify-between items-center">
                     <div>
-                      <h2 className="text-lg font-bold text-gray-900">{assignment.title}</h2>
-                      <p className="text-sm text-gray-500 mt-1">{assignment.description || 'Без описания'}</p>
+                      <h2 className="text-lg font-bold text-gray-900">{item.title}</h2>
+                      <p className="text-sm text-gray-500 mt-1">{item.description || 'Без описания'}</p>
                       
                       <div className="flex gap-4 mt-3 text-sm">
-                        <span className="text-gray-600">Задач: <strong>{taskCount}</strong></span>
+                        <span className="text-gray-600">Задач: <strong>{item.taskCount}</strong></span>
                         <span className="text-gray-600">Попыток: <strong>{item.attempts_allowed}</strong></span>
                         {item.deadline && (
                           <span className={isOverdue ? 'text-red-600 font-medium' : 'text-gray-600'}>
@@ -128,7 +160,7 @@ export default function DashboardPage() {
   }
 
   // ==========================================
-  // ИНТЕРФЕЙС РЕПЕТИТОРА (без изменений)
+  // ИНТЕРФЕЙС РЕПЕТИТОРА
   // ==========================================
   return (
     <div className="min-h-screen bg-gray-50">
