@@ -43,9 +43,9 @@ export default function TasksPage() {
             <h1 className="text-2xl font-bold text-gray-900">Библиотека заданий</h1>
           </div>
           {/* Пока кнопка ведет на заглушку, форму сделаем на следующем шаге */}
-          <button className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-500">
+          <Link href="/dashboard/tasks/new" className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-500">
             + Добавить задание
-          </button>
+          </Link>
         </div>
 
         {loading ? (
