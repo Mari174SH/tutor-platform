@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '../../../supabase'
 import Link from 'next/link'
+import MathText from '../../../components/MathText'
 
 export default function StudentAssignmentPage() {
   const router = useRouter()
@@ -20,14 +21,13 @@ export default function StudentAssignmentPage() {
   const [tasks, setTasks] = useState<any[]>([])
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [results, setResults] = useState<Record<number, boolean>>({})
-  const [submitted, setSubmitted] = useState(false) // Отправлено ли уже
+  const [submitted, setSubmitted] = useState(false)
 
   useEffect(() => {
     const fetchAssignment = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // 1. Загружаем само ДЗ
       const { data: assignData } = await supabase
         .from('hw_assignments')
         .select('*')
@@ -36,7 +36,6 @@ export default function StudentAssignmentPage() {
       
       if (assignData) setAssignment(assignData)
 
-      // 2. Загружаем задачи этого ДЗ
       const { data: taskLinks } = await supabase
         .from('hw_assignment_tasks')
         .select('task_id, position, hw_tasks(*)')
@@ -48,7 +47,6 @@ export default function StudentAssignmentPage() {
         setTasks(formattedTasks)
       }
 
-      // 3. Загружаем уже отправленные ответы (если ученик зашел повторно)
       const { data: subs } = await supabase
         .from('hw_submissions')
         .select('*')
@@ -167,7 +165,9 @@ export default function StudentAssignmentPage() {
                   </span>
                 </div>
 
-                <div className="text-gray-700 mb-4 whitespace-pre-wrap">{task.content_html}</div>
+                <div className="text-gray-700 mb-4 whitespace-pre-wrap">
+                  <MathText text={task.content_html} />
+                </div>
 
                 {task.images && task.images.length > 0 && (
                   <div className="flex flex-wrap gap-4 mb-4">
