@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../../supabase'
 import Link from 'next/link'
+import MathText from '../../components/MathText'
 
 export default function TasksPage() {
   const router = useRouter()
@@ -18,7 +19,7 @@ export default function TasksPage() {
       return
     }
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('hw_tasks')
       .select('*')
       .order('created_at', { ascending: false })
@@ -91,10 +92,11 @@ export default function TasksPage() {
                     )}
                   </div>
 
-                  <div className="mt-2 text-sm text-gray-600 line-clamp-3" dangerouslySetInnerHTML={{ __html: task.content_html }} />
+                  <div className="mt-2 text-sm text-gray-600 line-clamp-3">
+                    <MathText text={task.content_html} />
+                  </div>
                 </div>
 
-                {/* Кнопки управления */}
                 <div className="flex flex-col gap-2 ml-4 shrink-0">
                   <Link 
                     href={`/dashboard/tasks/edit/${task.id}`}
