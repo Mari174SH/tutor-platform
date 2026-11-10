@@ -104,6 +104,14 @@ export default function DashboardPage() {
               Перейти
             </Link>
           </div>
+                    {/* Карточка 4 */}
+          <div className="rounded-lg bg-white p-6 shadow">
+            <h2 className="text-lg font-medium text-gray-900">Темы и разделы</h2>
+            <p className="mt-2 text-sm text-gray-500">Создавайте структуру для ЕГЭ и ОГЭ.</p>
+            <Link href="/dashboard/topics" className="mt-4 inline-block rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500">
+              Перейти
+            </Link>
+          </div>
         </div>
       </main>
     </div>
