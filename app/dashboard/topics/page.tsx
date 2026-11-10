@@ -11,6 +11,7 @@ export default function TopicsPage() {
   
   const [topics, setTopics] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null) // Для вывода ошибок
 
   // Состояния для новой темы
   const [newTitle, setNewTitle] = useState('')
@@ -18,7 +19,7 @@ export default function TopicsPage() {
   const [newSubject, setNewSubject] = useState('Математика')
   const [newNumber, setNewNumber] = useState('')
 
-  // Состояние для новой подтемы (храним ID темы, для которой создаем)
+  // Состояние для новой подтемы
   const [subtopicTitle, setSubtopicTitle] = useState('')
   const [activeTopicId, setActiveTopicId] = useState<number | null>(null)
 
@@ -27,17 +28,22 @@ export default function TopicsPage() {
   }, [])
 
   const fetchTopics = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('hw_topics')
       .select('*, hw_subtopics(*)')
       .order('created_at', { ascending: false })
     
+    if (error) {
+      console.error(error)
+      setErrorMsg('Ошибка загрузки тем: ' + error.message)
+    }
     if (data) setTopics(data)
     setLoading(false)
   }
 
   const handleCreateTopic = async (e: React.FormEvent) => {
     e.preventDefault()
+    setErrorMsg(null)
     if (!newTitle) return
 
     const { error } = await supabase
@@ -49,7 +55,10 @@ export default function TopicsPage() {
         topic_number: newNumber,
       })
 
-    if (!error) {
+    if (error) {
+      console.error(error)
+      setErrorMsg('Ошибка создания: ' + error.message)
+    } else {
       setNewTitle('')
       setNewNumber('')
       fetchTopics()
@@ -57,6 +66,7 @@ export default function TopicsPage() {
   }
 
   const handleCreateSubtopic = async (topicId: number) => {
+    setErrorMsg(null)
     if (!subtopicTitle) return
 
     const { error } = await supabase
@@ -66,7 +76,10 @@ export default function TopicsPage() {
         title: subtopicTitle,
       })
 
-    if (!error) {
+    if (error) {
+      console.error(error)
+      setErrorMsg('Ошибка создания подтемы: ' + error.message)
+    } else {
       setSubtopicTitle('')
       setActiveTopicId(null)
       fetchTopics()
@@ -81,8 +94,15 @@ export default function TopicsPage() {
             &larr; Назад в кабинет
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">Темы и разделы</h1>
-          <p className="text-sm text-gray-500 mt-1">Создавайте темы (например, «№12 Графики функций») и добавляйте в них подтемы.</p>
+          <p className="text-sm text-gray-500 mt-1">Создавайте темы и добавляйте в них подтемы.</p>
         </div>
+
+        {/* Вывод ошибки */}
+        {errorMsg && (
+          <div className="mb-4 rounded-md bg-red-50 p-4 text-sm text-red-700 border border-red-200">
+            <strong>Внимание:</strong> {errorMsg}
+          </div>
+        )}
 
         {/* Форма создания темы */}
         <form onSubmit={handleCreateTopic} className="mb-8 rounded-lg bg-white p-4 shadow flex flex-wrap gap-4 items-end">
