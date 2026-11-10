@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { createClient } from '../../../../supabase'
+import { createClient } from '../../../supabase'
 import Link from 'next/link'
 
 export default function StudentAssignmentPage() {
