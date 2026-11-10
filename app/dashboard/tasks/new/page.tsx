@@ -8,14 +8,21 @@ import Link from 'next/link'
 export default function NewTaskPage() {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Состояния для полей формы
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [answerText, setAnswerText] = useState('')
-  const [answerType, setAnswerType] = useState('exact') // exact, numeric, manual
+  const [answerType, setAnswerType] = useState('exact')
   const [files, setFiles] = useState<File[]>([])
+  
+  // Новые поля
+  const [examType, setExamType] = useState('ege')
+  const [subject, setSubject] = useState('')
+  const [taskNumber, setTaskNumber] = useState('')
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -59,7 +66,9 @@ export default function NewTaskPage() {
           answer_text: answerText,
           answer_type: answerType,
           images: imageUrls,
-          // topic_id пока оставим null, так как мы еще не создали темы
+          exam_type: examType,
+          subject: subject,
+          task_number: taskNumber,
         })
 
       if (insertError) throw insertError
@@ -93,9 +102,45 @@ export default function NewTaskPage() {
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Например: Задача 1. Кинематика"
+              placeholder="Например: Задача на скорость"
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
             />
+          </div>
+
+          {/* Блок классификации задания */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Экзамен</label>
+              <select
+                value={examType}
+                onChange={(e) => setExamType(e.target.value)}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+              >
+                <option value="ege">ЕГЭ</option>
+                <option value="oge">ОГЭ</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Предмет</label>
+              <input
+                type="text"
+                required
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="Математика, Физика..."
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Номер задания</label>
+              <input
+                type="text"
+                value={taskNumber}
+                onChange={(e) => setTaskNumber(e.target.value)}
+                placeholder="Например, 14"
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+              />
+            </div>
           </div>
 
           <div>
@@ -121,7 +166,7 @@ export default function NewTaskPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700">Тип ответа</label>
               <select
