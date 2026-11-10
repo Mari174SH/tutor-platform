@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '../../../supabase'
 import Link from 'next/link'
+import MathText from '../../../components/MathText'
 
 export default function AssignmentDetailsPage() {
   const params = useParams()
@@ -85,7 +86,6 @@ export default function AssignmentDetailsPage() {
     }
   }
 
-  // Подсчет статистики для выбранного ученика
   const stats = useMemo(() => {
     const checked = studentTasks.filter(t => t.submission && t.submission.is_correct !== null)
     const correct = checked.filter(t => t.submission.is_correct === true)
@@ -110,7 +110,6 @@ export default function AssignmentDetailsPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          {/* Левая колонка: ученики */}
           <div className="md:col-span-1 bg-white rounded-lg shadow p-4 h-fit">
             <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Ученики</h2>
             <div className="space-y-1">
@@ -130,10 +129,7 @@ export default function AssignmentDetailsPage() {
             </div>
           </div>
 
-          {/* Правая колонка: задания и ответы */}
           <div className="md:col-span-3 space-y-4">
-            
-            {/* Блок статистики */}
             {selectedStudentId && (
               <div className="bg-white rounded-lg shadow p-4 border border-gray-200 flex items-center gap-6">
                 <div>
@@ -171,7 +167,7 @@ export default function AssignmentDetailsPage() {
                   </div>
 
                   <div className="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded border border-gray-100 whitespace-pre-wrap">
-                    {task.content_html}
+                    <MathText text={task.content_html} />
                   </div>
 
                   <div className="mt-4">
