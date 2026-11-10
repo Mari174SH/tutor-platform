@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '../../../supabase'
 import Link from 'next/link'
@@ -12,22 +12,46 @@ export default function NewTaskPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Состояния для полей формы
+  // Справочники
+  const [topics, setTopics] = useState<any[]>([])
+  const [subtopics, setSubtopics] = useState<any[]>([])
+
+  // Поля формы
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [answerText, setAnswerText] = useState('')
   const [answerType, setAnswerType] = useState('exact')
   const [files, setFiles] = useState<File[]>([])
   
-  // Новые поля
-  const [examType, setExamType] = useState('ege')
-  const [subject, setSubject] = useState('')
-  const [taskNumber, setTaskNumber] = useState('')
+  // Выбранные тема и подтема
+  const [selectedTopicId, setSelectedTopicId] = useState('')
+  const [selectedSubtopicId, setSelectedSubtopicId] = useState('')
+
+  // Загружаем темы при открытии страницы
+  useEffect(() => {
+    const fetchTopics = async () => {
+      const { data } = await supabase.from('hw_topics').select('*').order('topic_number')
+      if (data) setTopics(data)
+    }
+    fetchTopics()
+  }, [supabase])
+
+  // Когда выбрана тема, загружаем её подтемы
+  useEffect(() => {
+    if (!selectedTopicId) {
+      setSubtopics([])
+      setSelectedSubtopicId('')
+      return
+    }
+    const fetchSubtopics = async () => {
+      const { data } = await supabase.from('hw_subtopics').select('*').eq('topic_id', selectedTopicId)
+      if (data) setSubtopics(data)
+    }
+    fetchSubtopics()
+  }, [selectedTopicId, supabase])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setFiles(Array.from(e.target.files))
-    }
+    if (e.target.files) setFiles(Array.from(e.target.files))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,45 +63,34 @@ export default function NewTaskPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Не авторизован')
 
-      // 1. Загружаем картинки в Supabase Storage (если они есть)
+      // Загрузка картинок
       const imageUrls: string[] = []
       for (const file of files) {
         const fileExt = file.name.split('.').pop()
         const fileName = `${Math.random()}.${fileExt}`
-        const { error: uploadError } = await supabase.storage
-          .from('task-images')
-          .upload(fileName, file)
-
+        const { error: uploadError } = await supabase.storage.from('task-images').upload(fileName, file)
         if (uploadError) throw uploadError
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('task-images')
-          .getPublicUrl(fileName)
-        
+        const { data: { publicUrl } } = supabase.storage.from('task-images').getPublicUrl(fileName)
         imageUrls.push(publicUrl)
       }
 
-      // 2. Сохраняем само задание в базу
-      const { error: insertError } = await supabase
-        .from('hw_tasks')
-        .insert({
-          title,
-          content_html: content,
-          answer_text: answerText,
-          answer_type: answerType,
-          images: imageUrls,
-          exam_type: examType,
-          subject: subject,
-          task_number: taskNumber,
-        })
+      // Сохранение задания
+      const { error: insertError } = await supabase.from('hw_tasks').insert({
+        title,
+        content_html: content,
+        answer_text: answerText,
+        answer_type: answerType,
+        images: imageUrls,
+        topic_id: selectedTopicId ? parseInt(selectedTopicId) : null,
+        subtopic_id: selectedSubtopicId ? parseInt(selectedSubtopicId) : null,
+      })
 
       if (insertError) throw insertError
 
       router.push('/dashboard/tasks')
       router.refresh()
-      
     } catch (err: any) {
-      setError(err.message || 'Произошла ошибка при сохранении')
+      setError(err.message || 'Ошибка при сохранении')
     } finally {
       setLoading(false)
     }
@@ -96,107 +109,71 @@ export default function NewTaskPage() {
         <form onSubmit={handleSubmit} className="space-y-6 rounded-lg bg-white p-6 shadow">
           {error && <div className="rounded bg-red-50 p-3 text-red-600">{error}</div>}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Название (для себя)</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Например: Задача на скорость"
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-            />
-          </div>
-
-          {/* Блок классификации задания */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Выбор темы и подтемы */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Экзамен</label>
+              <label className="block text-sm font-medium text-gray-700">Тема (Раздел)</label>
               <select
-                value={examType}
-                onChange={(e) => setExamType(e.target.value)}
+                required
+                value={selectedTopicId}
+                onChange={(e) => setSelectedTopicId(e.target.value)}
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
               >
-                <option value="ege">ЕГЭ</option>
-                <option value="oge">ОГЭ</option>
+                <option value="">-- Выберите тему --</option>
+                {topics.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.exam_type === 'ege' ? 'ЕГЭ' : 'ОГЭ'} | {t.subject} | {t.topic_number ? `№${t.topic_number}` : ''} {t.title}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Предмет</label>
-              <input
-                type="text"
-                required
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="Математика, Физика..."
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-              />
+              <label className="block text-sm font-medium text-gray-700">Подтема</label>
+              <select
+                value={selectedSubtopicId}
+                onChange={(e) => setSelectedSubtopicId(e.target.value)}
+                disabled={!selectedTopicId || subtopics.length === 0}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+              >
+                <option value="">-- Выберите подтему --</option>
+                {subtopics.map(s => (
+                  <option key={s.id} value={s.id}>{s.title}</option>
+                ))}
+              </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Номер задания</label>
-              <input
-                type="text"
-                value={taskNumber}
-                onChange={(e) => setTaskNumber(e.target.value)}
-                placeholder="Например, 14"
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-              />
-            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Название (для себя)</label>
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Например: Задача на скорость" className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700">Текст задания</label>
-            <textarea
-              required
-              rows={5}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Введите условие задачи..."
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-            />
+            <textarea required rows={5} value={content} onChange={(e) => setContent(e.target.value)} placeholder="Введите условие задачи..." className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700">Фотографии (если есть)</label>
-            <input
-              type="file"
-              multiple
-              accept="image/*"
-              onChange={handleFileChange}
-              className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
-            />
+            <input type="file" multiple accept="image/*" onChange={handleFileChange} className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100" />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700">Тип ответа</label>
-              <select
-                value={answerType}
-                onChange={(e) => setAnswerType(e.target.value)}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-              >
+              <select value={answerType} onChange={(e) => setAnswerType(e.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2">
                 <option value="exact">Точный текст</option>
                 <option value="numeric">Число</option>
                 <option value="manual">Ручная проверка (развернутый)</option>
               </select>
             </div>
-
             <div>
               <label className="block text-sm font-medium text-gray-700">Правильный ответ</label>
-              <input
-                type="text"
-                value={answerText}
-                onChange={(e) => setAnswerText(e.target.value)}
-                placeholder="Для автопроверки"
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-              />
+              <input type="text" value={answerText} onChange={(e) => setAnswerText(e.target.value)} placeholder="Для автопроверки" className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" />
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-500 disabled:opacity-50"
-          >
+          <button type="submit" disabled={loading} className="w-full rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-500 disabled:opacity-50">
             {loading ? 'Сохранение...' : 'Сохранить задание'}
           </button>
         </form>
