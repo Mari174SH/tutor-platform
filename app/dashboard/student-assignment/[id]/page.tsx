@@ -19,7 +19,8 @@ export default function StudentAssignmentPage() {
   const [assignment, setAssignment] = useState<any>(null)
   const [tasks, setTasks] = useState<any[]>([])
   const [answers, setAnswers] = useState<Record<number, string>>({})
-  const [existingSubmissions, setExistingSubmissions] = useState<any[]>([])
+  const [results, setResults] = useState<Record<number, boolean>>({}) // Результаты проверки
+  const [submitted, setSubmitted] = useState(false) // Флаг, что ответы отправлены
 
   useEffect(() => {
     const fetchAssignment = async () => {
@@ -47,20 +48,25 @@ export default function StudentAssignmentPage() {
         setTasks(formattedTasks)
       }
 
-      // 3. Загружаем уже отправленные ответы (если ученик зашел повторно)
+      // 3. Загружаем уже отправленные ответы и результаты
       const { data: subs } = await supabase
         .from('hw_submissions')
         .select('*')
         .eq('assignment_id', assignmentId)
         .eq('student_id', user.id)
 
-      if (subs) {
-        setExistingSubmissions(subs)
+      if (subs && subs.length > 0) {
         const savedAnswers: Record<number, string> = {}
+        const savedResults: Record<number, boolean> = {}
         subs.forEach(sub => {
           savedAnswers[sub.task_id] = sub.answer_text || ''
+          if (sub.is_correct !== null) {
+            savedResults[sub.task_id] = sub.is_correct
+          }
         })
         setAnswers(savedAnswers)
+        setResults(savedResults)
+        setSubmitted(true) // Если ответы уже есть, показываем результаты
       }
 
       setLoading(false)
@@ -73,6 +79,21 @@ export default function StudentAssignmentPage() {
     setAnswers(prev => ({ ...prev, [taskId]: value }))
   }
 
+  // Функция сравнения ответов
+  const checkAnswer = (studentAnswer: string, correctAnswer: string | null, type: string) => {
+    if (!correctAnswer || type === 'manual') return null // Если ответа нет или ручная проверка, не проверяем
+    if (!studentAnswer.trim()) return false // Пустой ответ — неверно
+
+    const student = studentAnswer.trim().replace(',', '.') // Заменяем запятую на точку
+    const correct = correctAnswer.trim().replace(',', '.')
+
+    if (type === 'numeric') {
+      return parseFloat(student) === parseFloat(correct)
+    } else {
+      return student.toLowerCase() === correct.toLowerCase()
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
@@ -82,27 +103,34 @@ export default function StudentAssignmentPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Не авторизован')
 
+      const newResults: Record<number, boolean> = {}
+
       // Формируем массив ответов для сохранения
-      const submissionsToSave = tasks.map(task => ({
-        assignment_id: parseInt(assignmentId),
-        task_id: task.id,
-        student_id: user.id,
-        answer_text: answers[task.id] || '',
-        submitted_at: new Date().toISOString()
-      }))
+      const submissionsToSave = tasks.map(task => {
+        const isCorrect = checkAnswer(answers[task.id] || '', task.answer_text, task.answer_type)
+        if (isCorrect !== null) {
+          newResults[task.id] = isCorrect
+        }
+
+        return {
+          assignment_id: parseInt(assignmentId),
+          task_id: task.id,
+          student_id: user.id,
+          answer_text: answers[task.id] || '',
+          is_correct: isCorrect, // Сохраняем результат автопроверки в базу
+          submitted_at: new Date().toISOString()
+        }
+      })
 
       // Сохраняем (или обновляем) ответы
       const { error: upsertError } = await supabase
         .from('hw_submissions')
-        .upsert(submissionsToSave, { 
-          onConflict: 'assignment_id, task_id, student_id' 
-        })
+        .upsert(submissionsToSave, { onConflict: 'assignment_id, task_id, student_id' })
 
       if (upsertError) throw upsertError
 
-      alert('Ответы успешно отправлены!')
-      router.push('/dashboard')
-      router.refresh()
+      setResults(newResults)
+      setSubmitted(true)
     } catch (err: any) {
       setError(err.message || 'Ошибка при отправке')
     } finally {
@@ -127,48 +155,76 @@ export default function StudentAssignmentPage() {
         {error && <div className="mb-4 rounded bg-red-50 p-3 text-red-600">{error}</div>}
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {tasks.map((task, index) => (
-            <div key={task.id} className="rounded-lg bg-white p-6 shadow border border-gray-200">
-              <div className="flex justify-between items-start mb-4">
-                <h2 className="text-lg font-bold text-gray-800">Задание {index + 1}</h2>
-                <span className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded">
-                  {task.answer_type === 'exact' ? 'Текст' : task.answer_type === 'numeric' ? 'Число' : 'Развернутый ответ'}
-                </span>
-              </div>
+          {tasks.map((task, index) => {
+            const result = results[task.id]
+            const hasResult = result !== undefined
 
-              {/* Текст задания */}
-              <div className="text-gray-700 mb-4 whitespace-pre-wrap">{task.content_html}</div>
-
-              {/* Картинки задания, если есть */}
-              {task.images && task.images.length > 0 && (
-                <div className="flex flex-wrap gap-4 mb-4">
-                  {task.images.map((url: string, i: number) => (
-                    <img key={i} src={url} alt="Task" className="max-h-60 rounded border" />
-                  ))}
+            return (
+              <div key={task.id} className={`rounded-lg bg-white p-6 shadow border ${hasResult ? (result ? 'border-green-500' : 'border-red-500') : 'border-gray-200'}`}>
+                <div className="flex justify-between items-start mb-4">
+                  <h2 className="text-lg font-bold text-gray-800">Задание {index + 1}</h2>
+                  <span className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded">
+                    {task.answer_type === 'exact' ? 'Текст' : task.answer_type === 'numeric' ? 'Число' : 'Развернутый ответ'}
+                  </span>
                 </div>
-              )}
 
-              {/* Поле для ответа */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ваш ответ:</label>
-                <textarea
-                  rows={task.answer_type === 'manual' ? 4 : 1}
-                  value={answers[task.id] || ''}
-                  onChange={(e) => handleAnswerChange(task.id, e.target.value)}
-                  placeholder="Введите ответ..."
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
-                />
+                {/* Текст задания */}
+                <div className="text-gray-700 mb-4 whitespace-pre-wrap">{task.content_html}</div>
+
+                {/* Картинки задания */}
+                {task.images && task.images.length > 0 && (
+                  <div className="flex flex-wrap gap-4 mb-4">
+                    {task.images.map((url: string, i: number) => (
+                      <img key={i} src={url} alt="Task" className="max-h-60 rounded border" />
+                    ))}
+                  </div>
+                )}
+
+                {/* Поле для ответа */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ваш ответ:</label>
+                  <textarea
+                    rows={task.answer_type === 'manual' ? 4 : 1}
+                    value={answers[task.id] || ''}
+                    onChange={(e) => handleAnswerChange(task.id, e.target.value)}
+                    disabled={submitted} // Блокируем после отправки
+                    placeholder="Введите ответ..."
+                    className={`w-full rounded-md border px-3 py-2 focus:outline-none ${
+                      hasResult ? (result ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50') : 'border-gray-300 focus:border-blue-500'
+                    }`}
+                  />
+                </div>
+
+                {/* Результат проверки */}
+                {hasResult && (
+                  <div className={`mt-3 p-3 rounded-md text-sm font-medium ${result ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                    {result ? (
+                      <span>✅ Верно!</span>
+                    ) : (
+                      <span>❌ Неверно. Правильный ответ: <strong>{task.answer_text || 'см. у учителя'}</strong></span>
+                    )}
+                  </div>
+                )}
+
+                {/* Если это ручная проверка, показываем уведомление */}
+                {submitted && task.answer_type === 'manual' && !hasResult && (
+                  <div className="mt-3 p-3 rounded-md text-sm bg-blue-50 text-blue-700">
+                    ⏳ Ответ отправлен на проверку репетитору.
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
 
           <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 flex justify-center shadow-lg">
             <button 
               type="submit" 
-              disabled={submitting} 
-              className="w-full max-w-4xl rounded-md bg-blue-600 px-4 py-3 text-white hover:bg-blue-500 disabled:opacity-50 text-lg font-medium"
+              disabled={submitting || submitted} 
+              className={`w-full max-w-4xl rounded-md px-4 py-3 text-white text-lg font-medium ${
+                submitted ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-500'
+              } disabled:opacity-50`}
             >
-              {submitting ? 'Отправка...' : 'Отправить ответы'}
+              {submitting ? 'Отправка...' : submitted ? 'Ответы отправлены' : 'Отправить ответы'}
             </button>
           </div>
         </form>
