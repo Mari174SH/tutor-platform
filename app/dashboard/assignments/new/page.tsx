@@ -28,7 +28,7 @@ export default function NewAssignmentPage() {
   const [attempts, setAttempts] = useState(1)
   const [deadline, setDeadline] = useState('')
 
-  // Загружаем темы со всеми подтемами и учеников
+  // Загружаем темы со всеми подтемами (и считаем задачи) и учеников
   useEffect(() => {
     const fetchData = async () => {
       // 1. Загружаем темы и вложенные подтемы
@@ -38,10 +38,24 @@ export default function NewAssignmentPage() {
         .order('topic_number')
       
       if (topicsError) {
-        console.error("Ошибка загрузки тем:", topicsError)
         setError('Ошибка загрузки тем: ' + topicsError.message)
       } else if (topicsData) {
-        setTopics(topicsData)
+        // Получаем количество задач для каждой подтемы
+        const enhancedTopics = await Promise.all(topicsData.map(async (topic) => {
+          const enhancedSubtopics = await Promise.all((topic.hw_subtopics || []).map(async (sub: any) => {
+            // Считаем количество задач в этой подтеме
+            const { count, error } = await supabase
+              .from('hw_tasks')
+              .select('*', { count: 'exact', head: true })
+              .eq('subtopic_id', sub.id)
+            
+            return { ...sub, taskCount: count || 0 }
+          }))
+          
+          return { ...topic, hw_subtopics: enhancedSubtopics }
+        }))
+        
+        setTopics(enhancedTopics)
       }
 
       // 2. Загружаем учеников
@@ -197,7 +211,12 @@ export default function NewAssignmentPage() {
                   <div className="divide-y">
                     {topic.hw_subtopics?.map((sub: any) => (
                       <div key={sub.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
-                        <span className="text-sm text-gray-700">{sub.title}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-700">{sub.title}</span>
+                          <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">
+                            {sub.taskCount} шт.
+                          </span>
+                        </div>
                         <div className="flex items-center gap-2">
                           <input
                             type="number"
