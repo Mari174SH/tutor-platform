@@ -17,38 +17,26 @@ export default function StudentAssignmentPage() {
   const [error, setError] = useState<string | null>(null)
   
   const [assignment, setAssignment] = useState<any>(null)
-  const [linkData, setLinkData] = useState<any>(null) // Данные о попытках и дедлайне
-  
   const [tasks, setTasks] = useState<any[]>([])
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [results, setResults] = useState<Record<number, boolean>>({})
-  
-  // Состояние: сейчас смотрим результаты или редактируем?
-  const [isEditing, setIsEditing] = useState(false)
-  const [currentAttempt, setCurrentAttempt] = useState(1)
+  const [submitted, setSubmitted] = useState(false) // Отправлено ли уже
 
   useEffect(() => {
     const fetchAssignment = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // 1. Загружаем ДЗ и данные о назначении (попытки, дедлайн)
+      // 1. Загружаем само ДЗ
       const { data: assignData } = await supabase
         .from('hw_assignments')
         .select('*')
         .eq('id', assignmentId)
         .single()
+      
       if (assignData) setAssignment(assignData)
 
-      const { data: link } = await supabase
-        .from('hw_assignment_students')
-        .select('*')
-        .eq('assignment_id', assignmentId)
-        .eq('student_id', user.id)
-        .single()
-      if (link) setLinkData(link)
-
-      // 2. Загружаем задачи
+      // 2. Загружаем задачи этого ДЗ
       const { data: taskLinks } = await supabase
         .from('hw_assignment_tasks')
         .select('task_id, position, hw_tasks(*)')
@@ -60,7 +48,7 @@ export default function StudentAssignmentPage() {
         setTasks(formattedTasks)
       }
 
-      // 3. Загружаем прошлые ответы
+      // 3. Загружаем уже отправленные ответы (если ученик зашел повторно)
       const { data: subs } = await supabase
         .from('hw_submissions')
         .select('*')
@@ -70,24 +58,17 @@ export default function StudentAssignmentPage() {
       if (subs && subs.length > 0) {
         const savedAnswers: Record<number, string> = {}
         const savedResults: Record<number, boolean> = {}
-        let maxAttempt = 1
-
+        
         subs.forEach(sub => {
           savedAnswers[sub.task_id] = sub.answer_text || ''
           if (sub.is_correct !== null) {
             savedResults[sub.task_id] = sub.is_correct
           }
-          if (sub.attempt_no && sub.attempt_no > maxAttempt) {
-            maxAttempt = sub.attempt_no
-          }
         })
-
+        
         setAnswers(savedAnswers)
         setResults(savedResults)
-        setCurrentAttempt(maxAttempt)
-        setIsEditing(false) // По умолчанию показываем результаты
-      } else {
-        setIsEditing(true) // Если ответов нет, сразу даем решать
+        setSubmitted(true)
       }
 
       setLoading(false)
@@ -124,7 +105,6 @@ export default function StudentAssignmentPage() {
       if (!user) throw new Error('Не авторизован')
 
       const newResults: Record<number, boolean> = {}
-      const newAttemptNo = currentAttempt + (Object.keys(results).length > 0 ? 1 : 0)
 
       const submissionsToSave = tasks.map(task => {
         const isCorrect = checkAnswer(answers[task.id] || '', task.answer_text, task.answer_type)
@@ -138,7 +118,6 @@ export default function StudentAssignmentPage() {
           student_id: user.id,
           answer_text: answers[task.id] || '',
           is_correct: isCorrect,
-          attempt_no: newAttemptNo, // Сохраняем номер попытки
           submitted_at: new Date().toISOString()
         }
       })
@@ -150,8 +129,7 @@ export default function StudentAssignmentPage() {
       if (upsertError) throw upsertError
 
       setResults(newResults)
-      setCurrentAttempt(newAttemptNo)
-      setIsEditing(false) // После отправки переключаемся в режим просмотра
+      setSubmitted(true)
     } catch (err: any) {
       setError(err.message || 'Ошибка при отправке')
     } finally {
@@ -161,39 +139,24 @@ export default function StudentAssignmentPage() {
 
   if (loading) return <div className="p-8 text-center">Загрузка задания...</div>
 
-  // Проверки на дедлайн и попытки
-  const isOverdue = linkData?.deadline && new Date(linkData.deadline) < new Date()
-  const attemptsAllowed = linkData?.attempts_allowed || 1
-  const canRetry = currentAttempt < attemptsAllowed && !isOverdue
-  const hasPreviousResults = Object.keys(results).length > 0
-
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <nav className="bg-white shadow-sm mb-8">
-        <div className="mx-auto max-w-4xl px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-sm text-blue-600 hover:underline">&larr; Назад к списку</Link>
-            <h1 className="text-xl font-bold text-gray-900">{assignment?.title}</h1>
-          </div>
-          <div className="text-sm text-gray-500">
-            Попытка: {currentAttempt} из {attemptsAllowed}
-          </div>
+        <div className="mx-auto max-w-4xl px-4 py-4 flex items-center gap-4">
+          <Link href="/dashboard" className="text-sm text-blue-600 hover:underline">
+            &larr; Назад к списку
+          </Link>
+          <h1 className="text-xl font-bold text-gray-900">{assignment?.title}</h1>
         </div>
       </nav>
 
       <main className="mx-auto max-w-4xl px-4">
-        {isOverdue && (
-          <div className="mb-4 rounded bg-red-50 p-3 text-red-600 border border-red-200">
-            Дедлайн истек. Отправка новых ответов невозможна.
-          </div>
-        )}
-        
         {error && <div className="mb-4 rounded bg-red-50 p-3 text-red-600">{error}</div>}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {tasks.map((task, index) => {
             const result = results[task.id]
-            const hasResult = result !== undefined && !isEditing
+            const hasResult = result !== undefined
 
             return (
               <div key={task.id} className={`rounded-lg bg-white p-6 shadow border ${hasResult ? (result ? 'border-green-500' : 'border-red-500') : 'border-gray-200'}`}>
@@ -220,11 +183,11 @@ export default function StudentAssignmentPage() {
                     rows={task.answer_type === 'manual' ? 4 : 1}
                     value={answers[task.id] || ''}
                     onChange={(e) => handleAnswerChange(task.id, e.target.value)}
-                    disabled={!isEditing}
+                    disabled={submitted}
                     placeholder="Введите ответ..."
                     className={`w-full rounded-md border px-3 py-2 focus:outline-none ${
                       hasResult ? (result ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50') : 'border-gray-300 focus:border-blue-500'
-                    } ${!isEditing ? 'bg-gray-100 text-gray-600 cursor-not-allowed' : ''}`}
+                    } ${submitted ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   />
                 </div>
 
@@ -238,7 +201,7 @@ export default function StudentAssignmentPage() {
                   </div>
                 )}
 
-                {hasResult && task.answer_type === 'manual' && result === undefined && (
+                {submitted && task.answer_type === 'manual' && !hasResult && (
                   <div className="mt-3 p-3 rounded-md text-sm bg-blue-50 text-blue-700">
                     ⏳ Ответ отправлен на проверку репетитору.
                   </div>
@@ -247,29 +210,16 @@ export default function StudentAssignmentPage() {
             )
           })}
 
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 flex justify-center gap-4 shadow-lg">
-            {!isEditing && hasPreviousResults ? (
-              <button 
-                type="button"
-                onClick={() => setIsEditing(true)}
-                disabled={!canRetry}
-                className={`w-full max-w-4xl rounded-md px-4 py-3 text-white text-lg font-medium ${
-                  canRetry ? 'bg-orange-500 hover:bg-orange-600' : 'bg-gray-400 cursor-not-allowed'
-                }`}
-              >
-                {canRetry ? 'Попробовать еще раз' : (isOverdue ? 'Дедлайн истек' : 'Попытки закончились')}
-              </button>
-            ) : (
-              <button 
-                type="submit" 
-                disabled={submitting || isOverdue} 
-                className={`w-full max-w-4xl rounded-md px-4 py-3 text-white text-lg font-medium ${
-                  isOverdue ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-500'
-                } disabled:opacity-50`}
-              >
-                {submitting ? 'Отправка...' : 'Отправить ответы'}
-              </button>
-            )}
+          <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 flex justify-center shadow-lg">
+            <button 
+              type="submit" 
+              disabled={submitting || submitted} 
+              className={`w-full max-w-4xl rounded-md px-4 py-3 text-white text-lg font-medium ${
+                submitted ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-500'
+              } disabled:opacity-50`}
+            >
+              {submitting ? 'Отправка...' : submitted ? 'Ответы отправлены' : 'Отправить ответы'}
+            </button>
           </div>
         </form>
       </main>
