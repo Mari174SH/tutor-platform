@@ -1,23 +1,26 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '../../supabase'
 import Link from 'next/link'
 
 export default function StudentsPage() {
-  const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
   
   const [students, setStudents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   
-  // Состояния для формы добавления
+  // Состояния для создания
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [newName, setNewName] = useState('')
   const [newLogin, setNewLogin] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [createdData, setCreatedData] = useState<{login: string, password: string} | null>(null)
+
+  // Состояния для сброса пароля
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false)
+  const [resetEmail, setResetEmail] = useState('')
+  const [newPassword, setNewPassword] = useState<string | null>(null)
 
   const fetchStudents = async () => {
     const { data } = await supabase
@@ -49,15 +52,47 @@ export default function StudentsPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
 
-      // Показываем созданный логин и пароль
       setCreatedData({ login: data.login, password: data.password })
       setNewName('')
       setNewLogin('')
-      fetchStudents() // Обновляем список
+      fetchStudents()
     } catch (err: any) {
       alert('Ошибка: ' + err.message)
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const handleResetPassword = async () => {
+    try {
+      const res = await fetch('/api/create-student', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset-password', login: resetEmail })
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      setNewPassword(data.password)
+    } catch (err: any) {
+      alert('Ошибка: ' + err.message)
+    }
+  }
+
+  const handleDeleteStudent = async (id: string, name: string) => {
+    if (!confirm(`Вы уверены, что хотите удалить ученика "${name}"? Все его ответы тоже удалятся.`)) return
+
+    // Удаляем профиль (каскадно удалятся и ответы, и связи с ДЗ)
+    const { error } = await supabase
+      .from('hw_profiles')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      alert('Ошибка при удалении профиля: ' + error.message)
+    } else {
+      fetchStudents()
     }
   }
 
@@ -87,6 +122,7 @@ export default function StudentsPage() {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Имя</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Логин (Email)</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Действия</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -94,6 +130,20 @@ export default function StudentsPage() {
                   <tr key={student.id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.full_name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.email}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button 
+                        onClick={() => { setResetEmail(student.email); setIsResetModalOpen(true); setNewPassword(null); }} 
+                        className="text-blue-600 hover:text-blue-900 mr-4"
+                      >
+                        Сбросить пароль
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteStudent(student.id, student.full_name)} 
+                        className="text-red-600 hover:text-red-900"
+                      >
+                        Удалить
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -102,7 +152,7 @@ export default function StudentsPage() {
         )}
       </div>
 
-      {/* Модальное окно добавления */}
+      {/* Модальное окно создания */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
@@ -114,10 +164,9 @@ export default function StudentsPage() {
                   <p className="font-bold mb-2">Ученик успешно создан!</p>
                   <p>Передайте эти данные ученику для входа:</p>
                   <div className="mt-3 bg-white p-3 rounded border border-green-300 font-mono text-sm">
-                    <p><strong>Логин:</strong> {createdData.login}</p>
+                    <p><strong>Логин (Email):</strong> {createdData.login.toLowerCase().replace(/[^a-z0-9]/g, '')}@tutor.local</p>
                     <p><strong>Пароль:</strong> {createdData.password}</p>
                   </div>
-                  <p className="text-xs mt-2 text-green-600">Для входа нужно ввести полный email: {createdData.login.toLowerCase()}@tutor.local</p>
                 </div>
                 <button onClick={() => setIsModalOpen(false)} className="w-full rounded-md bg-gray-200 px-4 py-2 text-gray-700 hover:bg-gray-300">Закрыть</button>
               </div>
@@ -139,6 +188,36 @@ export default function StudentsPage() {
                   </button>
                 </div>
               </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно сброса пароля */}
+      {isResetModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
+            <h2 className="text-xl font-bold mb-4">Сброс пароля</h2>
+            
+            {newPassword ? (
+              <div className="space-y-4">
+                <div className="bg-blue-50 border border-blue-200 p-4 rounded-md text-blue-800">
+                  <p className="font-bold mb-2">Пароль успешно сброшен!</p>
+                  <div className="mt-3 bg-white p-3 rounded border border-blue-300 font-mono text-sm">
+                    <p><strong>Логин:</strong> {resetEmail}</p>
+                    <p><strong>Новый пароль:</strong> {newPassword}</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsResetModalOpen(false)} className="w-full rounded-md bg-gray-200 px-4 py-2 text-gray-700 hover:bg-gray-300">Закрыть</button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-600">Вы уверены, что хотите сбросить пароль для <strong>{resetEmail}</strong>? Старый пароль перестанет работать.</p>
+                <div className="flex gap-2 pt-2">
+                  <button onClick={() => setIsResetModalOpen(false)} className="flex-1 rounded-md bg-gray-100 px-4 py-2 text-gray-700 hover:bg-gray-200">Отмена</button>
+                  <button onClick={handleResetPassword} className="flex-1 rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-500">Сбросить</button>
+                </div>
+              </div>
             )}
           </div>
         </div>
