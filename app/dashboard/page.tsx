@@ -1,11 +1,12 @@
 'use client'
 
+import { useMemo } from 'react' // добавили useMemo
 import { useRouter } from 'next/navigation'
 import { createClient } from '../supabase'
 
 export default function DashboardPage() {
   const router = useRouter()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), []) // обернули в useMemo
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
