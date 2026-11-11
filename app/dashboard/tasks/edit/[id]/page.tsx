@@ -24,7 +24,6 @@ function EditTaskContent() {
   const [content, setContent] = useState('')
   const [answerText, setAnswerText] = useState('')
   const [answerType, setAnswerType] = useState('numeric')
-  const [maxScore, setMaxScore] = useState(1)
   const [selectedTopicId, setSelectedTopicId] = useState('')
   const [selectedSubtopicId, setSelectedSubtopicId] = useState('')
   const [existingImages, setExistingImages] = useState<string[]>([])
@@ -46,19 +45,12 @@ function EditTaskContent() {
       setSubtopics([])
       return
     }
-    
-    // Подтягиваем балл из темы
-    const topic = topics.find(t => t.id === parseInt(selectedTopicId))
-    if (topic && topic.max_score) {
-      setMaxScore(topic.max_score)
-    }
-
     const fetchSubtopics = async () => {
       const { data } = await supabase.from('hw_subtopics').select('*').eq('topic_id', selectedTopicId)
       if (data) setSubtopics(data)
     }
     fetchSubtopics()
-  }, [selectedTopicId, topics, supabase])
+  }, [selectedTopicId, supabase])
 
   useEffect(() => {
     if (!taskId) return
@@ -76,7 +68,6 @@ function EditTaskContent() {
       setContent(data.content_html || '')
       setAnswerText(data.answer_text || '')
       setAnswerType(data.answer_type || 'numeric')
-      setMaxScore(data.max_score || 1)
       setSelectedTopicId(data.topic_id ? String(data.topic_id) : '')
       setSelectedSubtopicId(data.subtopic_id ? String(data.subtopic_id) : '')
       setExistingImages(data.images || [])
@@ -125,6 +116,10 @@ function EditTaskContent() {
     setError(null)
 
     try {
+      // Берем балл из темы
+      const topic = topics.find(t => t.id === parseInt(selectedTopicId))
+      const maxScore = topic?.max_score || 1
+
       const newImageUrls: string[] = []
       for (const file of files) {
         const fileExt = file.name.split('.').pop() || 'png'
@@ -142,7 +137,7 @@ function EditTaskContent() {
         content_html: content,
         answer_text: answerText,
         answer_type: answerType,
-        max_score: maxScore,
+        max_score: maxScore, // Берем из темы
         images: allImages,
         topic_id: selectedTopicId ? parseInt(selectedTopicId) : null,
         subtopic_id: selectedSubtopicId ? parseInt(selectedSubtopicId) : null,
@@ -242,7 +237,7 @@ function EditTaskContent() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700">Тип ответа</label>
               <select value={answerType} onChange={(e) => setAnswerType(e.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2">
@@ -257,16 +252,6 @@ function EditTaskContent() {
                 type="text" 
                 value={answerText} 
                 onChange={(e) => handleAnswerChange(e.target.value)} 
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" 
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Макс. балл (из темы)</label>
-              <input 
-                type="number" 
-                min="0"
-                value={maxScore} 
-                onChange={(e) => setMaxScore(parseInt(e.target.value) || 0)} 
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" 
               />
             </div>
