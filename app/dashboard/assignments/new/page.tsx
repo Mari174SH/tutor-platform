@@ -12,26 +12,38 @@ export default function NewAssignmentPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Данные
   const [topics, setTopics] = useState<any[]>([])
   const [students, setStudents] = useState<any[]>([])
   
+  // Настройки ДЗ
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  
+  // Фильтр по экзамену
+  const [selectedExam, setSelectedExam] = useState('ege') 
+
+  // Выбранное количество задач по подтемам: { [subtopicId]: count }
   const [selectedCounts, setSelectedCounts] = useState<Record<string, number>>({})
+  
+  // Ученики и дедлайн
   const [selectedStudents, setSelectedStudents] = useState<string[]>([])
   const [deadline, setDeadline] = useState('')
 
+  // Загружаем темы со всеми подтемами и учеников
   useEffect(() => {
     const fetchData = async () => {
-      const { data: topicsData } = await supabase
+      const { data: topicsData, error: topicsError } = await supabase
         .from('hw_topics')
         .select('*, hw_subtopics(*)')
         .order('topic_number')
       
-      if (topicsData) {
+      if (topicsError) {
+        setError('Ошибка загрузки тем: ' + topicsError.message)
+      } else if (topicsData) {
         const enhancedTopics = await Promise.all(topicsData.map(async (topic) => {
           const enhancedSubtopics = await Promise.all((topic.hw_subtopics || []).map(async (sub: any) => {
-            const { count } = await supabase
+            const { count, error } = await supabase
               .from('hw_tasks')
               .select('*', { count: 'exact', head: true })
               .eq('subtopic_id', sub.id)
@@ -50,6 +62,11 @@ export default function NewAssignmentPage() {
     }
     fetchData()
   }, [supabase])
+
+  // Фильтруем темы по выбранному экзамену
+  const filteredTopics = useMemo(() => {
+    return topics.filter(t => t.exam_type === selectedExam)
+  }, [topics, selectedExam])
 
   const handleCountChange = (subtopicId: number, value: string) => {
     const num = parseInt(value) || 0
@@ -71,8 +88,14 @@ export default function NewAssignmentPage() {
     e.preventDefault()
     
     const totalSelected = Object.values(selectedCounts).reduce((a, b) => a + b, 0)
-    if (totalSelected === 0) return setError('Выберите хотя бы одну задачу')
-    if (selectedStudents.length === 0) return setError('Выберите хотя бы одного ученика')
+    if (totalSelected === 0) {
+      setError('Выберите хотя бы одну задачу (добавьте количество к любой подтеме)')
+      return
+    }
+    if (selectedStudents.length === 0) {
+      setError('Выберите хотя бы одного ученика')
+      return
+    }
 
     setLoading(true)
     setError(null)
@@ -84,23 +107,31 @@ export default function NewAssignmentPage() {
       const taskIdsToAssign: number[] = []
 
       for (const [subtopicId, count] of Object.entries(selectedCounts)) {
-        const { data: availableTasks } = await supabase.from('hw_tasks').select('id').eq('subtopic_id', subtopicId)
+        const { data: availableTasks } = await supabase
+          .from('hw_tasks')
+          .select('id')
+          .eq('subtopic_id', subtopicId)
+
         if (!availableTasks || availableTasks.length === 0) continue
+
         const shuffled = availableTasks.sort(() => 0.5 - Math.random())
-        shuffled.slice(0, count).forEach(t => taskIdsToAssign.push(t.id))
+        const selected = shuffled.slice(0, count)
+        
+        selected.forEach(t => taskIdsToAssign.push(t.id))
       }
 
-      if (taskIdsToAssign.length === 0) throw new Error('В выбранных подтемах нет заданий')
+      if (taskIdsToAssign.length === 0) {
+        throw new Error('В выбранных подтемах нет заданий в библиотеке')
+      }
 
-      // 1. Создаем ДЗ
       const { data: assignment, error: assignError } = await supabase
         .from('hw_assignments')
         .insert({ tutor_id: user.id, title, description })
         .select()
         .single()
+
       if (assignError) throw assignError
 
-      // 2. Привязываем задания
       const taskLinks = taskIdsToAssign.map((taskId, index) => ({
         assignment_id: assignment.id,
         task_id: taskId,
@@ -109,10 +140,10 @@ export default function NewAssignmentPage() {
       const { error: tasksError } = await supabase.from('hw_assignment_tasks').insert(taskLinks)
       if (tasksError) throw tasksError
 
-      // 3. Привязываем учеников (без попыток)
       const studentLinks = selectedStudents.map(studentId => ({
         assignment_id: assignment.id,
         student_id: studentId,
+        attempts_allowed: 1,
         deadline: deadline ? new Date(deadline).toISOString() : null,
       }))
       const { error: studentsError } = await supabase.from('hw_assignment_students').insert(studentLinks)
@@ -131,7 +162,9 @@ export default function NewAssignmentPage() {
     <div className="min-h-screen bg-gray-50 p-8 pb-32">
       <div className="mx-auto max-w-4xl">
         <div className="mb-6">
-          <Link href="/dashboard/assignments" className="text-sm text-blue-600 hover:underline mb-2 inline-block">&larr; Назад к списку</Link>
+          <Link href="/dashboard/assignments" className="text-sm text-blue-600 hover:underline mb-2 inline-block">
+            &larr; Назад к списку ДЗ
+          </Link>
           <h1 className="text-2xl font-bold text-gray-900">Создать Домашнее Задание</h1>
         </div>
 
@@ -145,39 +178,88 @@ export default function NewAssignmentPage() {
             </div>
           </div>
 
+          {/* Фильтр по экзамену */}
+          <div className="rounded-lg bg-white p-6 shadow space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Экзамен</label>
+              <div className="flex gap-4">
+                <button
+                  type="button"
+                  onClick={() => setSelectedExam('ege')}
+                  className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
+                    selectedExam === 'ege' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  ЕГЭ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedExam('oge')}
+                  className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
+                    selectedExam === 'oge' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  ОГЭ
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Выбор тем и количества задач */}
           <div className="rounded-lg bg-white p-6 shadow">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-medium text-gray-900">1. Выберите темы и количество задач</h2>
-              <span className="text-sm text-gray-500">Всего выбрано: <strong>{Object.values(selectedCounts).reduce((a, b) => a + b, 0)}</strong></span>
+              <h2 className="text-lg font-medium text-gray-900">1. Выберите темы и количество задач ({selectedExam.toUpperCase()})</h2>
+              <span className="text-sm text-gray-500">Всего выбрано: <strong>{Object.values(selectedCounts).reduce((a, b) => a + b, 0)}</strong> задач</span>
             </div>
             
             <div className="space-y-4">
-              {topics.map(topic => (
+              {filteredTopics.map(topic => (
                 <div key={topic.id} className="border rounded-lg overflow-hidden">
                   <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
-                    <div className="font-bold text-gray-800">{topic.topic_number ? `№${topic.topic_number} ` : ''}{topic.title}</div>
+                    <div className="font-bold text-gray-800">
+                      {topic.topic_number ? `№${topic.topic_number} ` : ''}{topic.title}
+                    </div>
+                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+                      {topic.exam_type === 'ege' ? 'ЕГЭ' : 'ОГЭ'}
+                    </span>
                   </div>
+                  
                   <div className="divide-y">
                     {topic.hw_subtopics?.map((sub: any) => (
                       <div key={sub.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
                         <div className="flex items-center gap-2">
                           <span className="text-sm text-gray-700">{sub.title}</span>
-                          <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">{sub.taskCount} шт.</span>
+                          <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">
+                            {sub.taskCount} шт.
+                          </span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <input type="number" min="0" value={selectedCounts[sub.id] || ''} onChange={(e) => handleCountChange(sub.id, e.target.value)} placeholder="0" className="w-16 rounded border border-gray-300 px-2 py-1 text-center text-sm" />
+                          <input
+                            type="number"
+                            min="0"
+                            value={selectedCounts[sub.id] || ''}
+                            onChange={(e) => handleCountChange(sub.id, e.target.value)}
+                            placeholder="0"
+                            className="w-16 rounded border border-gray-300 px-2 py-1 text-center text-sm"
+                          />
                           <span className="text-xs text-gray-400">шт.</span>
                         </div>
                       </div>
                     ))}
+                    {(!topic.hw_subtopics || topic.hw_subtopics.length === 0) && (
+                      <div className="px-4 py-3 text-sm text-gray-400 italic">Нет подтем</div>
+                    )}
                   </div>
                 </div>
               ))}
+              {filteredTopics.length === 0 && <p className="text-sm text-gray-500">Нет тем для выбранного экзамена.</p>}
             </div>
           </div>
 
+          {/* Настройки учеников */}
           <div className="rounded-lg bg-white p-6 shadow space-y-4">
             <h2 className="text-lg font-medium text-gray-900 mb-2">2. Кому назначить ({selectedStudents.length} выбрано)</h2>
+            
             <div className="max-h-40 overflow-y-auto space-y-2 border rounded-md p-2 bg-gray-50 mb-4">
               {students.map(student => (
                 <label key={student.id} className="flex items-center gap-3 p-2 hover:bg-white rounded cursor-pointer">
@@ -185,6 +267,7 @@ export default function NewAssignmentPage() {
                   <span className="text-sm text-gray-700">{student.full_name || student.email}</span>
                 </label>
               ))}
+              {students.length === 0 && <p className="text-sm text-gray-500 p-2">У вас пока нет учеников.</p>}
             </div>
 
             <div className="pt-4 border-t">
@@ -195,7 +278,7 @@ export default function NewAssignmentPage() {
 
           <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 flex justify-center shadow-lg">
             <button type="submit" disabled={loading} className="w-full max-w-4xl rounded-md bg-blue-600 px-4 py-3 text-white hover:bg-blue-500 disabled:opacity-50 text-lg font-medium">
-              {loading ? 'Создание...' : 'Создать ДЗ'}
+              {loading ? 'Создание...' : 'Создать ДЗ (Случайная выборка из тем)'}
             </button>
           </div>
         </form>
