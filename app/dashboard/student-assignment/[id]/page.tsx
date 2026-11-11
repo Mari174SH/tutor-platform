@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '../../../supabase'
 import Link from 'next/link'
@@ -20,10 +20,11 @@ export default function StudentAssignmentPage() {
   const [assignment, setAssignment] = useState<any>(null)
   const [tasks, setTasks] = useState<any[]>([])
   const [answers, setAnswers] = useState<Record<number, string>>({})
+  const [files, setFiles] = useState<Record<number, File[]>>({})
   const [results, setResults] = useState<Record<number, boolean>>({})
   const [submitted, setSubmitted] = useState(false)
-  const [files, setFiles] = useState<Record<number, File[]>>({}) // Файлы для каждого задания
 
+  // Загрузка данных
   useEffect(() => {
     const fetchAssignment = async () => {
       const { data: { user } } = await supabase.auth.getUser()
@@ -48,6 +49,7 @@ export default function StudentAssignmentPage() {
         setTasks(formattedTasks)
       }
 
+      // Загружаем сохраненные ответы (черновик)
       const { data: subs } = await supabase
         .from('hw_submissions')
         .select('*')
@@ -57,17 +59,19 @@ export default function StudentAssignmentPage() {
       if (subs && subs.length > 0) {
         const savedAnswers: Record<number, string> = {}
         const savedResults: Record<number, boolean> = {}
+        let isSubmitted = false
         
         subs.forEach(sub => {
           savedAnswers[sub.task_id] = sub.answer_text || ''
           if (sub.is_correct !== null) {
             savedResults[sub.task_id] = sub.is_correct
+            isSubmitted = true // Если есть оценка, значит, уже отправлено
           }
         })
         
         setAnswers(savedAnswers)
         setResults(savedResults)
-        setSubmitted(true)
+        setSubmitted(isSubmitted)
       }
 
       setLoading(false)
@@ -76,8 +80,25 @@ export default function StudentAssignmentPage() {
     fetchAssignment()
   }, [assignmentId, supabase])
 
+  // АВТОСОХРАНЕНИЕ ЧЕРНОВИКА
+  const saveDraft = useCallback(async (taskId: number, text: string) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    // Сохраняем только текст, без оценки (is_correct: null)
+    await supabase.from('hw_submissions').upsert({
+      assignment_id: parseInt(assignmentId),
+      task_id: taskId,
+      student_id: user.id,
+      answer_text: text,
+      is_correct: null, // Черновик
+      submitted_at: new Date().toISOString()
+    }, { onConflict: 'assignment_id, task_id, student_id' })
+  }, [assignmentId, supabase])
+
   const handleAnswerChange = (taskId: number, value: string) => {
     setAnswers(prev => ({ ...prev, [taskId]: value }))
+    saveDraft(taskId, value) // Сохраняем при вводе
   }
 
   const handleFileChange = (taskId: number, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -158,7 +179,7 @@ export default function StudentAssignmentPage() {
           student_id: user.id,
           answer_text: answers[task.id] || '',
           is_correct: isCorrect,
-          images: imageUrls, // Сохраняем ссылки на файлы
+          images: imageUrls,
           submitted_at: new Date().toISOString()
         }
       }))
@@ -234,7 +255,6 @@ export default function StudentAssignmentPage() {
                   />
                 </div>
 
-                {/* Блок для загрузки файлов (только для развернутых ответов) */}
                 {task.answer_type === 'manual' && !submitted && (
                   <div 
                     onPaste={(e) => handlePaste(task.id, e)}
@@ -252,7 +272,6 @@ export default function StudentAssignmentPage() {
                   </div>
                 )}
 
-                {/* Список прикрепленных файлов */}
                 {files[task.id]?.length > 0 && (
                   <div className="mt-2 space-y-1">
                     {files[task.id].map((file, i) => (
