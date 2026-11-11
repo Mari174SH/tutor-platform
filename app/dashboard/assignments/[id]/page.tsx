@@ -86,7 +86,6 @@ export default function AssignmentDetailsPage() {
     }
   }
 
-  // Функция для сохранения баллов
   const handleSaveScore = async (submissionId: number, score: number) => {
     const { error } = await supabase
       .from('hw_submissions')
@@ -190,8 +189,20 @@ export default function AssignmentDetailsPage() {
                     </div>
                   </div>
 
+                  {/* Текст задания и картинки задания */}
                   <div className="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded border border-gray-100 whitespace-pre-wrap">
                     <MathText text={task.content_html} />
+                    
+                    {/* ВОТ ЗДЕСЬ ВЫВОДИМ КАРТИНКИ ЗАДАНИЯ */}
+                    {task.images && task.images.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-4">
+                        {task.images.map((url: string, i: number) => (
+                          <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block border rounded overflow-hidden hover:opacity-80">
+                            <img src={url} alt={`Task image ${i + 1}`} className="max-h-48 w-auto object-contain" />
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-4">
@@ -202,7 +213,7 @@ export default function AssignmentDetailsPage() {
                           {task.submission.answer_text || <span className="text-gray-400 italic">Пустой ответ</span>}
                         </div>
 
-                        {/* Показываем прикрепленные файлы ученика */}
+                        {/* Прикрепленные учеником файлы */}
                         {task.submission.images && task.submission.images.length > 0 && (
                           <div className="flex flex-wrap gap-4 mt-2">
                             {task.submission.images.map((url: string, i: number) => (
