@@ -11,15 +11,14 @@ export default function TopicsPage() {
   
   const [topics, setTopics] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null) // Для вывода ошибок
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  // Состояния для новой темы
   const [newTitle, setNewTitle] = useState('')
   const [newExam, setNewExam] = useState('ege')
   const [newSubject, setNewSubject] = useState('Математика')
   const [newNumber, setNewNumber] = useState('')
+  const [newMaxScore, setNewMaxScore] = useState(1) // Новое поле
 
-  // Состояние для новой подтемы
   const [subtopicTitle, setSubtopicTitle] = useState('')
   const [activeTopicId, setActiveTopicId] = useState<number | null>(null)
 
@@ -34,7 +33,6 @@ export default function TopicsPage() {
       .order('created_at', { ascending: false })
     
     if (error) {
-      console.error(error)
       setErrorMsg('Ошибка загрузки тем: ' + error.message)
     }
     if (data) setTopics(data)
@@ -53,14 +51,15 @@ export default function TopicsPage() {
         exam_type: newExam,
         subject: newSubject,
         topic_number: newNumber,
+        max_score: newMaxScore, // Сохраняем балл
       })
 
     if (error) {
-      console.error(error)
       setErrorMsg('Ошибка создания: ' + error.message)
     } else {
       setNewTitle('')
       setNewNumber('')
+      setNewMaxScore(1)
       fetchTopics()
     }
   }
@@ -77,7 +76,6 @@ export default function TopicsPage() {
       })
 
     if (error) {
-      console.error(error)
       setErrorMsg('Ошибка создания подтемы: ' + error.message)
     } else {
       setSubtopicTitle('')
@@ -97,14 +95,12 @@ export default function TopicsPage() {
           <p className="text-sm text-gray-500 mt-1">Создавайте темы и добавляйте в них подтемы.</p>
         </div>
 
-        {/* Вывод ошибки */}
         {errorMsg && (
           <div className="mb-4 rounded-md bg-red-50 p-4 text-sm text-red-700 border border-red-200">
             <strong>Внимание:</strong> {errorMsg}
           </div>
         )}
 
-        {/* Форма создания темы */}
         <form onSubmit={handleCreateTopic} className="mb-8 rounded-lg bg-white p-4 shadow flex flex-wrap gap-4 items-end">
           <div className="flex-1 min-w-[120px]">
             <label className="block text-xs font-medium text-gray-700">Экзамен</label>
@@ -125,12 +121,15 @@ export default function TopicsPage() {
             <label className="block text-xs font-medium text-gray-700">Название темы</label>
             <input type="text" required value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Графики функций" className="mt-1 w-full rounded border px-2 py-1.5 text-sm" />
           </div>
+          <div className="w-24">
+            <label className="block text-xs font-medium text-gray-700">Макс. балл</label>
+            <input type="number" min="0" value={newMaxScore} onChange={(e) => setNewMaxScore(parseInt(e.target.value) || 0)} className="mt-1 w-full rounded border px-2 py-1.5 text-sm" />
+          </div>
           <button type="submit" className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-500">
             Создать
           </button>
         </form>
 
-        {/* Список тем */}
         {loading ? (
           <p>Загрузка...</p>
         ) : (
@@ -146,6 +145,9 @@ export default function TopicsPage() {
                       {topic.exam_type === 'ege' ? 'ЕГЭ' : 'ОГЭ'}
                     </span>
                     <span className="text-xs text-gray-500">{topic.subject}</span>
+                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded font-medium">
+                      {topic.max_score || 1} балл(а)
+                    </span>
                   </div>
                 </div>
                 
@@ -160,7 +162,6 @@ export default function TopicsPage() {
                     <p className="text-sm text-gray-400 italic mb-2">Подтем пока нет</p>
                   )}
 
-                  {/* Форма добавления подтемы */}
                   {activeTopicId === topic.id ? (
                     <div className="flex gap-2 mt-2">
                       <input
