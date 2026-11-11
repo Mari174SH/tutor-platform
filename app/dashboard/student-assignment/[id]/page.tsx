@@ -22,6 +22,7 @@ export default function StudentAssignmentPage() {
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [results, setResults] = useState<Record<number, boolean>>({})
   const [submitted, setSubmitted] = useState(false)
+  const [files, setFiles] = useState<Record<number, File[]>>({}) // Файлы для каждого задания
 
   useEffect(() => {
     const fetchAssignment = async () => {
@@ -79,6 +80,35 @@ export default function StudentAssignmentPage() {
     setAnswers(prev => ({ ...prev, [taskId]: value }))
   }
 
+  const handleFileChange = (taskId: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setFiles(prev => ({ ...prev, [taskId]: [...(prev[taskId] || []), ...Array.from(e.target.files!)] }))
+    }
+  }
+
+  const handlePaste = (taskId: number, e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items
+    const newFiles: File[] = []
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const blob = items[i].getAsFile()
+        if (blob) {
+          newFiles.push(new File([blob], `pasted-image-${Date.now()}.png`, { type: blob.type }))
+        }
+      }
+    }
+    if (newFiles.length > 0) {
+      setFiles(prev => ({ ...prev, [taskId]: [...(prev[taskId] || []), ...newFiles] }))
+    }
+  }
+
+  const removeFile = (taskId: number, index: number) => {
+    setFiles(prev => ({
+      ...prev,
+      [taskId]: (prev[taskId] || []).filter((_, i) => i !== index)
+    }))
+  }
+
   const checkAnswer = (studentAnswer: string, correctAnswer: string | null, type: string) => {
     if (!correctAnswer || type === 'manual') return null
     if (!studentAnswer.trim()) return false
@@ -104,10 +134,22 @@ export default function StudentAssignmentPage() {
 
       const newResults: Record<number, boolean> = {}
 
-      const submissionsToSave = tasks.map(task => {
+      const submissionsToSave = await Promise.all(tasks.map(async (task) => {
         const isCorrect = checkAnswer(answers[task.id] || '', task.answer_text, task.answer_type)
         if (isCorrect !== null) {
           newResults[task.id] = isCorrect
+        }
+
+        // Загружаем файлы, если они есть
+        const taskFiles = files[task.id] || []
+        const imageUrls: string[] = []
+        for (const file of taskFiles) {
+          const fileExt = file.name.split('.').pop() || 'png'
+          const fileName = `${Math.random()}.${fileExt}`
+          const { error: uploadError } = await supabase.storage.from('task-images').upload(fileName, file)
+          if (uploadError) throw uploadError
+          const { data: { publicUrl } } = supabase.storage.from('task-images').getPublicUrl(fileName)
+          imageUrls.push(publicUrl)
         }
 
         return {
@@ -116,9 +158,10 @@ export default function StudentAssignmentPage() {
           student_id: user.id,
           answer_text: answers[task.id] || '',
           is_correct: isCorrect,
+          images: imageUrls, // Сохраняем ссылки на файлы
           submitted_at: new Date().toISOString()
         }
-      })
+      }))
 
       const { error: upsertError } = await supabase
         .from('hw_submissions')
@@ -190,6 +233,38 @@ export default function StudentAssignmentPage() {
                     } ${submitted ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   />
                 </div>
+
+                {/* Блок для загрузки файлов (только для развернутых ответов) */}
+                {task.answer_type === 'manual' && !submitted && (
+                  <div 
+                    onPaste={(e) => handlePaste(task.id, e)}
+                    tabIndex={0}
+                    className="mt-3 border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:bg-gray-50"
+                  >
+                    <p className="text-sm text-gray-600 mb-2">Прикрепите фото решения (Ctrl+V или выберите файл)</p>
+                    <input 
+                      type="file" 
+                      multiple 
+                      accept="image/*" 
+                      onChange={(e) => handleFileChange(task.id, e)}
+                      className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-md file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100" 
+                    />
+                  </div>
+                )}
+
+                {/* Список прикрепленных файлов */}
+                {files[task.id]?.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {files[task.id].map((file, i) => (
+                      <div key={i} className="flex items-center justify-between text-sm bg-gray-50 p-2 rounded">
+                        <span>{file.name}</span>
+                        {!submitted && (
+                          <button type="button" onClick={() => removeFile(task.id, i)} className="text-red-500 font-bold">✕</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {hasResult && (
                   <div className={`mt-3 p-3 rounded-md text-sm font-medium ${result ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
