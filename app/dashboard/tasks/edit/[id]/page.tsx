@@ -23,13 +23,12 @@ function EditTaskContent() {
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [answerText, setAnswerText] = useState('')
-  const [answerType, setAnswerType] = useState('exact')
+  const [answerType, setAnswerType] = useState('numeric')
   const [selectedTopicId, setSelectedTopicId] = useState('')
   const [selectedSubtopicId, setSelectedSubtopicId] = useState('')
   const [existingImages, setExistingImages] = useState<string[]>([])
   const [files, setFiles] = useState<File[]>([])
 
-  // Фильтры для возврата
   const returnTopic = searchParams.get('returnTopic') || ''
   const returnSubtopic = searchParams.get('returnSubtopic') || ''
 
@@ -68,7 +67,7 @@ function EditTaskContent() {
       setTitle(data.title || '')
       setContent(data.content_html || '')
       setAnswerText(data.answer_text || '')
-      setAnswerType(data.answer_type || 'exact')
+      setAnswerType(data.answer_type || 'numeric')
       setSelectedTopicId(data.topic_id ? String(data.topic_id) : '')
       setSelectedSubtopicId(data.subtopic_id ? String(data.subtopic_id) : '')
       setExistingImages(data.images || [])
@@ -104,6 +103,14 @@ function EditTaskContent() {
     setExistingImages(prev => prev.filter(img => img !== url))
   }
 
+  // АВТООПРЕДЕЛЕНИЕ ТИПА
+  const handleAnswerChange = (value: string) => {
+    setAnswerText(value)
+    if (/^-?\d+([.,]\d+)?$/.test(value.trim())) {
+      setAnswerType('numeric')
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
@@ -134,7 +141,6 @@ function EditTaskContent() {
 
       if (updateError) throw updateError
 
-      // ВОЗВРАЩАЕМСЯ С ФИЛЬТРАМИ
       router.push(`/dashboard/tasks?topic=${returnTopic}&subtopic=${returnSubtopic}`)
       router.refresh()
     } catch (err: any) {
@@ -150,9 +156,7 @@ function EditTaskContent() {
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="mx-auto max-w-3xl">
         <div className="mb-6">
-          <Link href={`/dashboard/tasks?topic=${returnTopic}&subtopic=${returnSubtopic}`} className="text-sm text-blue-600 hover:underline mb-2 inline-block">
-            &larr; Назад к библиотеке
-          </Link>
+          <Link href={`/dashboard/tasks?topic=${returnTopic}&subtopic=${returnSubtopic}`} className="text-sm text-blue-600 hover:underline mb-2 inline-block">&larr; Назад к библиотеке</Link>
           <h1 className="text-2xl font-bold text-gray-900">Редактировать задание (ID: {taskId})</h1>
         </div>
 
@@ -233,14 +237,19 @@ function EditTaskContent() {
             <div>
               <label className="block text-sm font-medium text-gray-700">Тип ответа</label>
               <select value={answerType} onChange={(e) => setAnswerType(e.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2">
-                <option value="exact">Точный текст</option>
                 <option value="numeric">Число</option>
+                <option value="exact">Точный текст</option>
                 <option value="manual">Ручная проверка (развернутый)</option>
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Правильный ответ</label>
-              <input type="text" value={answerText} onChange={(e) => setAnswerText(e.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" />
+              <input 
+                type="text" 
+                value={answerText} 
+                onChange={(e) => handleAnswerChange(e.target.value)} 
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" 
+              />
             </div>
           </div>
 
