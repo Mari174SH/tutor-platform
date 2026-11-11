@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useState, useMemo, useEffect, Suspense } from 'react'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { createClient } from '../../../../supabase'
 import Link from 'next/link'
 
-export default function EditTaskPage() {
+function EditTaskContent() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const taskId = params.id as string
   
   const supabase = useMemo(() => createClient(), [])
@@ -28,7 +29,10 @@ export default function EditTaskPage() {
   const [existingImages, setExistingImages] = useState<string[]>([])
   const [files, setFiles] = useState<File[]>([])
 
-  // Загружаем темы
+  // Фильтры для возврата
+  const returnTopic = searchParams.get('returnTopic') || ''
+  const returnSubtopic = searchParams.get('returnSubtopic') || ''
+
   useEffect(() => {
     const fetchTopics = async () => {
       const { data } = await supabase.from('hw_topics').select('*').order('topic_number')
@@ -37,7 +41,6 @@ export default function EditTaskPage() {
     fetchTopics()
   }, [supabase])
 
-  // Загружаем подтемы, когда выбрана тема
   useEffect(() => {
     if (!selectedTopicId) {
       setSubtopics([])
@@ -50,7 +53,6 @@ export default function EditTaskPage() {
     fetchSubtopics()
   }, [selectedTopicId, supabase])
 
-  // Загружаем само задание
   useEffect(() => {
     if (!taskId) return
 
@@ -108,7 +110,6 @@ export default function EditTaskPage() {
     setError(null)
 
     try {
-      // Загружаем новые картинки (если есть)
       const newImageUrls: string[] = []
       for (const file of files) {
         const fileExt = file.name.split('.').pop() || 'png'
@@ -133,7 +134,8 @@ export default function EditTaskPage() {
 
       if (updateError) throw updateError
 
-      router.push('/dashboard/tasks')
+      // ВОЗВРАЩАЕМСЯ С ФИЛЬТРАМИ
+      router.push(`/dashboard/tasks?topic=${returnTopic}&subtopic=${returnSubtopic}`)
       router.refresh()
     } catch (err: any) {
       setError(err.message || 'Ошибка при сохранении')
@@ -148,7 +150,7 @@ export default function EditTaskPage() {
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="mx-auto max-w-3xl">
         <div className="mb-6">
-          <Link href="/dashboard/tasks" className="text-sm text-blue-600 hover:underline mb-2 inline-block">
+          <Link href={`/dashboard/tasks?topic=${returnTopic}&subtopic=${returnSubtopic}`} className="text-sm text-blue-600 hover:underline mb-2 inline-block">
             &larr; Назад к библиотеке
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">Редактировать задание (ID: {taskId})</h1>
@@ -190,7 +192,6 @@ export default function EditTaskPage() {
             <textarea required rows={5} value={content} onChange={(e) => setContent(e.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" />
           </div>
 
-          {/* Существующие картинки */}
           {existingImages.length > 0 && (
             <div>
               <p className="text-sm font-medium text-gray-700 mb-2">Текущие картинки:</p>
@@ -249,5 +250,13 @@ export default function EditTaskPage() {
         </form>
       </div>
     </div>
+  )
+}
+
+export default function EditTaskPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center">Загрузка...</div>}>
+      <EditTaskContent />
+    </Suspense>
   )
 }
