@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '../../supabase'
 import Link from 'next/link'
 import MathText from '../../components/MathText'
 
 export default function TasksPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = useMemo(() => createClient(), [])
   
   const [tasks, setTasks] = useState<any[]>([])
@@ -15,9 +16,9 @@ export default function TasksPage() {
   const [subtopics, setSubtopics] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Фильтры
-  const [selectedTopic, setSelectedTopic] = useState('')
-  const [selectedSubtopic, setSelectedSubtopic] = useState('')
+  // Фильтры берем из URL (если они там есть)
+  const [selectedTopic, setSelectedTopic] = useState(searchParams.get('topic') || '')
+  const [selectedSubtopic, setSelectedSubtopic] = useState(searchParams.get('subtopic') || '')
 
   useEffect(() => {
     fetchData()
@@ -27,11 +28,9 @@ export default function TasksPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return router.push('/login')
 
-    // Загружаем темы
     const { data: topicsData } = await supabase.from('hw_topics').select('*').order('topic_number')
     if (topicsData) setTopics(topicsData)
 
-    // Загружаем задания
     const { data: tasksData } = await supabase
       .from('hw_tasks')
       .select('*')
@@ -41,8 +40,17 @@ export default function TasksPage() {
     setLoading(false)
   }
 
-  // Когда выбираем тему, подгружаем ее подтемы
+  // Обновляем URL при смене фильтров
+  const updateUrl = (topic: string, subtopic: string) => {
+    const params = new URLSearchParams()
+    if (topic) params.set('topic', topic)
+    if (subtopic) params.set('subtopic', subtopic)
+    router.replace(`/dashboard/tasks?${params.toString()}`)
+  }
+
   useEffect(() => {
+    updateUrl(selectedTopic, selectedSubtopic)
+    
     if (!selectedTopic) {
       setSubtopics([])
       setSelectedSubtopic('')
@@ -55,7 +63,6 @@ export default function TasksPage() {
     fetchSubtopics()
   }, [selectedTopic, supabase])
 
-  // Фильтруем задания
   const filteredTasks = useMemo(() => {
     return tasks.filter(task => {
       if (selectedTopic && task.topic_id !== parseInt(selectedTopic)) return false
@@ -85,7 +92,6 @@ export default function TasksPage() {
           </Link>
         </div>
 
-        {/* Фильтры */}
         <div className="mb-6 bg-white p-4 rounded-lg shadow flex gap-4 items-end">
           <div className="flex-1">
             <label className="block text-xs font-medium text-gray-700 mb-1">Тема</label>
@@ -126,12 +132,11 @@ export default function TasksPage() {
           </button>
         </div>
 
-        {/* Список заданий */}
         <div className="space-y-4">
           <p className="text-sm text-gray-500">Найдено заданий: {filteredTasks.length}</p>
           
           {filteredTasks.map((task) => (
-            <div key={task.id} className="rounded-lg bg-white p-4 shadow border border-gray-100 flex justify-between items-start">
+            <div key={task.id} id={`task-${task.id}`} className="rounded-lg bg-white p-4 shadow border border-gray-100 flex justify-between items-start">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded">ID: {task.id}</span>
@@ -158,8 +163,9 @@ export default function TasksPage() {
               </div>
 
               <div className="flex flex-col gap-2 ml-4 shrink-0">
+                {/* Передаем фильтры в ссылку, чтобы вернуться обратно */}
                 <Link 
-                  href={`/dashboard/tasks/edit/${task.id}`}
+                  href={`/dashboard/tasks/edit/${task.id}?returnTopic=${selectedTopic}&returnSubtopic=${selectedSubtopic}`}
                   className="text-xs text-center rounded bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100 font-medium"
                 >
                   Редактировать
