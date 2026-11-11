@@ -19,7 +19,6 @@ export default function NewTaskPage() {
   const [content, setContent] = useState('')
   const [answerText, setAnswerText] = useState('')
   const [answerType, setAnswerType] = useState('numeric')
-  const [maxScore, setMaxScore] = useState(1) // Балл
   const [files, setFiles] = useState<File[]>([])
   
   const [selectedTopicId, setSelectedTopicId] = useState('')
@@ -33,26 +32,18 @@ export default function NewTaskPage() {
     fetchTopics()
   }, [supabase])
 
-  // Когда выбрана тема, подтягиваем её балл
   useEffect(() => {
     if (!selectedTopicId) {
       setSubtopics([])
       setSelectedSubtopicId('')
       return
     }
-    
-    // Находим тему и берем ее max_score
-    const topic = topics.find(t => t.id === parseInt(selectedTopicId))
-    if (topic && topic.max_score) {
-      setMaxScore(topic.max_score)
-    }
-
     const fetchSubtopics = async () => {
       const { data } = await supabase.from('hw_subtopics').select('*').eq('topic_id', selectedTopicId)
       if (data) setSubtopics(data)
     }
     fetchSubtopics()
-  }, [selectedTopicId, topics, supabase])
+  }, [selectedTopicId, supabase])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) setFiles(prev => [...prev, ...Array.from(e.target.files!)])
@@ -92,6 +83,10 @@ export default function NewTaskPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Не авторизован')
 
+      // Берем балл из выбранной темы
+      const topic = topics.find(t => t.id === parseInt(selectedTopicId))
+      const maxScore = topic?.max_score || 1
+
       const imageUrls: string[] = []
       for (const file of files) {
         const fileExt = file.name.split('.').pop() || 'png'
@@ -107,7 +102,7 @@ export default function NewTaskPage() {
         content_html: content,
         answer_text: answerText,
         answer_type: answerType,
-        max_score: maxScore, // Сохраняем балл (подтянутый из темы)
+        max_score: maxScore, // Берем из темы
         images: imageUrls,
         topic_id: selectedTopicId ? parseInt(selectedTopicId) : null,
         subtopic_id: selectedSubtopicId ? parseInt(selectedSubtopicId) : null,
@@ -185,7 +180,7 @@ export default function NewTaskPage() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700">Тип ответа</label>
               <select value={answerType} onChange={(e) => setAnswerType(e.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2">
@@ -201,16 +196,6 @@ export default function NewTaskPage() {
                 value={answerText} 
                 onChange={(e) => handleAnswerChange(e.target.value)} 
                 placeholder="Например: 74 или 1,5" 
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" 
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Макс. балл (из темы)</label>
-              <input 
-                type="number" 
-                min="0"
-                value={maxScore} 
-                onChange={(e) => setMaxScore(parseInt(e.target.value) || 0)} 
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" 
               />
             </div>
