@@ -116,7 +116,7 @@ export default function AssignmentDetailsPage() {
     }
   }
 
-  const stats = useMemo(() => {
+    const stats = useMemo(() => {
     let testTasks = 0;
     let testCorrect = 0;
     let manualTasks = 0;
@@ -124,18 +124,37 @@ export default function AssignmentDetailsPage() {
     let manualMaxScore = 0;
 
     studentTasks.forEach(t => {
-      const hasSubs = t.sub_questions && t.sub_questions.length > 0;
+      // Проверяем, есть ли у задания подвопросы (парсим, если пришла строка)
+      let hasSubs = false;
+      if (t.sub_questions) {
+        if (typeof t.sub_questions === 'string') {
+          try {
+            const parsed = JSON.parse(t.sub_questions);
+            hasSubs = Array.isArray(parsed) && parsed.length > 0;
+          } catch (e) {}
+        } else if (Array.isArray(t.sub_questions)) {
+          hasSubs = t.sub_questions.length > 0;
+        }
+      }
       
-      // Если есть подвопросы ИЛИ это тестовое — считаем тестовым
+      // Если есть подвопросы ИЛИ это не manual — считаем тестовым
       if (hasSubs || t.answer_type !== 'manual') {
         testTasks++;
         if (hasSubs) {
-          const allSubsCorrect = t.submission?.sub_results && Object.values(t.submission.sub_results).every(v => v === true);
-          if (allSubsCorrect) testCorrect++;
+          // Для подвопросов считаем "верным", если все sub_results = true
+          if (t.submission && t.submission.sub_results) {
+            const results = t.submission.sub_results;
+            const allTrue = Object.values(results).every(v => v === true);
+            if (allTrue) testCorrect++;
+          }
         } else {
-          if (t.submission && t.submission.is_correct === true) testCorrect++;
+          // Для обычных тестов
+          if (t.submission && t.submission.is_correct === true) {
+            testCorrect++;
+          }
         }
       } else {
+        // Развернутое задание (только для ручной проверки)
         manualTasks++;
         manualMaxScore += t.max_score || 1;
         if (t.submission && t.submission.score !== null) {
