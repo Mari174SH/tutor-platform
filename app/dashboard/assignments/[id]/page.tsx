@@ -105,8 +105,7 @@ export default function AssignmentDetailsPage() {
     }
   }
 
-  const stats = useMemo(() => {
-    let totalTasks = studentTasks.length;
+    const stats = useMemo(() => {
     let testTasks = 0;
     let testCorrect = 0;
     let manualTasks = 0;
@@ -114,22 +113,32 @@ export default function AssignmentDetailsPage() {
     let manualMaxScore = 0;
 
     studentTasks.forEach(t => {
-      if (t.answer_type === 'manual') {
+      const hasSubs = t.sub_questions && t.sub_questions.length > 0;
+      
+      // Если есть подвопросы ИЛИ это тестовое задание (не manual) — считаем его тестовым
+      if (hasSubs || t.answer_type !== 'manual') {
+        testTasks++;
+        // Если задание с подвопросами, считаем его "верным", только если все подвопросы верны
+        if (hasSubs) {
+          const allSubsCorrect = t.submission?.sub_results && Object.values(t.submission.sub_results).every(v => v === true);
+          if (allSubsCorrect) testCorrect++;
+        } else {
+          // Обычное тестовое задание
+          if (t.submission && t.submission.is_correct === true) {
+            testCorrect++;
+          }
+        }
+      } else {
+        // Развернутое задание (только для ручной проверки)
         manualTasks++;
         manualMaxScore += t.max_score || 1;
         if (t.submission && t.submission.score !== null) {
           manualScore += t.submission.score;
         }
-      } else {
-        testTasks++;
-        if (t.submission && t.submission.is_correct === true) {
-          testCorrect++;
-        }
       }
     });
 
     return {
-      totalTasks,
       testTasks,
       testCorrect,
       testPercent: testTasks > 0 ? Math.round((testCorrect / testTasks) * 100) : 0,
