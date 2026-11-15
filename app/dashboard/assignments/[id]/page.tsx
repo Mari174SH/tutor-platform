@@ -117,7 +117,7 @@ export default function AssignmentDetailsPage() {
     }
   }
 
-  const stats = useMemo(() => {
+    const stats = useMemo(() => {
     let testTasks = 0;
     let testCorrect = 0;
     let manualTasks = 0;
@@ -125,15 +125,15 @@ export default function AssignmentDetailsPage() {
     let manualMaxScore = 0;
 
     studentTasks.forEach(t => {
-      // Проверяем наличие подвопросов
-      const hasSubs = t.sub_questions && t.sub_questions.length > 0;
+      // ГЛАВНАЯ ПРОВЕРКА: если у ответа есть sub_results, это задание с подвопросами
+      const hasSubResults = t.submission?.sub_results && Object.keys(t.submission.sub_results).length > 0;
       
-      // Если есть подвопросы или это не manual — тестовое
-      if (hasSubs || t.answer_type !== 'manual') {
+      if (hasSubResults || t.answer_type !== 'manual') {
         testTasks++;
-        if (hasSubs) {
-          const allSubsCorrect = t.submission?.sub_results && Object.values(t.submission.sub_results).every(v => v === true);
-          if (allSubsCorrect) testCorrect++;
+        if (hasSubResults) {
+          // Считаем верным, если все подвопросы верны
+          const allTrue = Object.values(t.submission.sub_results).every(v => v === true);
+          if (allTrue) testCorrect++;
         } else {
           if (t.submission && t.submission.is_correct === true) testCorrect++;
         }
