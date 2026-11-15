@@ -27,7 +27,6 @@ export default function DashboardPage() {
       setProfile(profileData)
 
       if (profileData?.role === 'student') {
-        // 1. Получаем связи ученика с ДЗ
         const { data: links } = await supabase
           .from('hw_assignment_students')
           .select('*')
@@ -36,36 +35,46 @@ export default function DashboardPage() {
         if (links && links.length > 0) {
           const assignmentIds = links.map(l => l.assignment_id)
           
-          // 2. Получаем сами ДЗ
           const { data: assignmentsData } = await supabase
             .from('hw_assignments')
             .select('*')
             .in('id', assignmentIds)
 
-          // 3. Получаем количество задач в каждом ДЗ
           const { data: tasksData } = await supabase
             .from('hw_assignment_tasks')
-            .select('assignment_id')
+            .select('assignment_id, hw_tasks(max_score)')
             .in('assignment_id', assignmentIds)
 
-          // 4. Получаем ответы ученика (для подсчета процентов)
+          // Теперь берем score и sub_results из ответов
           const { data: submissionsData } = await supabase
             .from('hw_submissions')
-            .select('assignment_id, is_correct')
+            .select('assignment_id, is_correct, score')
             .eq('student_id', user.id)
 
           const combined = links.map(link => {
             const assignment = assignmentsData?.find(a => a.id === link.assignment_id)
-            const totalTasks = tasksData?.filter(t => t.assignment_id === link.assignment_id).length || 0
+            const myTasks = tasksData?.filter(t => t.assignment_id === link.assignment_id) || []
+            const totalTasks = myTasks.length
             
-            // Считаем правильные и проверенные ответы
-            const mySubmissions = submissionsData?.filter(s => s.assignment_id === link.assignment_id) || []
-            const checkedSubmissions = mySubmissions.filter(s => s.is_correct !== null)
-            const correctSubmissions = checkedSubmissions.filter(s => s.is_correct === true)
+            // Суммируем максимальные баллы по всем задачам ДЗ
+            const totalMaxScore = myTasks.reduce((sum, t) => sum + (t.hw_tasks?.max_score || 1), 0)
 
-            // Процент правильности (только если есть проверенные ответы)
-            const percent = checkedSubmissions.length > 0 
-              ? Math.round((correctSubmissions.length / checkedSubmissions.length) * 100) 
+            const mySubmissions = submissionsData?.filter(s => s.assignment_id === link.assignment_id) || []
+            
+            // Считаем набранные баллы
+            let totalScore = 0
+            let checkedCount = 0
+            
+            mySubmissions.forEach(sub => {
+              if (sub.score !== null) {
+                totalScore += sub.score
+                checkedCount++
+              }
+            })
+
+            // Процент считаем по баллам, а не по количеству задач
+            const percent = checkedCount > 0 
+              ? Math.round((totalScore / totalMaxScore) * 100) 
               : null
 
             return {
@@ -73,8 +82,9 @@ export default function DashboardPage() {
               title: assignment?.title || 'Без названия',
               description: assignment?.description || '',
               totalTasks: totalTasks,
-              checkedCount: checkedSubmissions.length,
-              correctCount: correctSubmissions.length,
+              checkedCount: checkedCount,
+              totalScore: totalScore,
+              totalMaxScore: totalMaxScore,
               percent: percent
             }
           })
@@ -148,13 +158,13 @@ export default function DashboardPage() {
                       )}
                     </div>
 
-                    {/* Прогресс-бар правильности */}
-                    {isCompleted && (
+                    {/* Прогресс-бар (по баллам) */}
+                    {isCompleted && item.percent !== null && (
                       <div className="mt-4 pt-4 border-t border-gray-100">
                         <div className="flex justify-between items-center mb-1">
                           <span className="text-sm font-medium text-gray-700">Правильность</span>
                           <span className={`text-sm font-bold ${item.percent >= 80 ? 'text-green-600' : item.percent >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-                            {item.percent}% ({item.correctCount} из {item.checkedCount})
+                            {item.percent}% ({item.totalScore} из {item.totalMaxScore} баллов)
                           </span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2.5">
