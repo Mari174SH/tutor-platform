@@ -77,7 +77,6 @@ export default function NewTaskPage() {
     }
   }
 
-  // Работа с подвопросами
   const addSubQuestion = () => {
     setSubQuestions(prev => [...prev, { text: '', answer: '' }])
   }
@@ -112,16 +111,20 @@ export default function NewTaskPage() {
         imageUrls.push(publicUrl)
       }
 
+      // Если есть подвопросы, основной ответ не нужен
+      const finalAnswerText = subQuestions.length > 0 ? '' : answerText;
+      const finalAnswerType = subQuestions.length > 0 ? 'manual' : answerType; // Если подвопросы, то ручная проверка (или авто)
+
       const { error: insertError } = await supabase.from('hw_tasks').insert({
         title,
         content_html: content,
-        answer_text: answerText, // Основной ответ (если есть)
-        answer_type: answerType,
+        answer_text: finalAnswerText,
+        answer_type: finalAnswerType,
         max_score: maxScore,
         images: imageUrls,
         topic_id: selectedTopicId ? parseInt(selectedTopicId) : null,
         subtopic_id: selectedSubtopicId ? parseInt(selectedSubtopicId) : null,
-        sub_questions: subQuestions, // Сохраняем подвопросы
+        sub_questions: subQuestions,
       })
 
       if (insertError) throw insertError
@@ -199,7 +202,7 @@ export default function NewTaskPage() {
           {/* БЛОК ПОДВОПРОСОВ */}
           <div className="border-t pt-4">
             <div className="flex justify-between items-center mb-3">
-              <label className="block text-sm font-medium text-gray-700">Подвопросы (для заданий 1-5)</label>
+              <label className="block text-sm font-medium text-gray-700">Подвопросы (для заданий 1-5 ОГЭ)</label>
               <button type="button" onClick={addSubQuestion} className="text-sm text-blue-600 hover:underline">
                 + Добавить подвопрос
               </button>
@@ -231,26 +234,29 @@ export default function NewTaskPage() {
             {subQuestions.length === 0 && <p className="text-xs text-gray-500">Нет подвопросов. Добавьте, если это задание ОГЭ 1-5.</p>}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Тип ответа (для основного)</label>
-              <select value={answerType} onChange={(e) => setAnswerType(e.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2">
-                <option value="numeric">Число</option>
-                <option value="exact">Точный текст</option>
-                <option value="manual">Ручная проверка</option>
-              </select>
+          {/* Поля ответа показываем только если НЕТ подвопросов */}
+          {subQuestions.length === 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Тип ответа (для основного)</label>
+                <select value={answerType} onChange={(e) => setAnswerType(e.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2">
+                  <option value="numeric">Число</option>
+                  <option value="exact">Точный текст</option>
+                  <option value="manual">Ручная проверка</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Правильный ответ (основной)</label>
+                <input 
+                  type="text" 
+                  value={answerText} 
+                  onChange={(e) => handleAnswerChange(e.target.value)} 
+                  placeholder="Например: 74" 
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" 
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Правильный ответ (основной)</label>
-              <input 
-                type="text" 
-                value={answerText} 
-                onChange={(e) => handleAnswerChange(e.target.value)} 
-                placeholder="Например: 74" 
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" 
-              />
-            </div>
-          </div>
+          )}
 
           <button type="submit" disabled={loading} className="w-full rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-500 disabled:opacity-50">
             {loading ? 'Сохранение...' : 'Сохранить задание'}
