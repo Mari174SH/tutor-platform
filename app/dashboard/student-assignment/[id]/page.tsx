@@ -20,14 +20,12 @@ export default function StudentAssignmentPage() {
   const [assignment, setAssignment] = useState<any>(null)
   const [tasks, setTasks] = useState<any[]>([])
   
-  // Ответы для обычных заданий
   const [answers, setAnswers] = useState<Record<number, string>>({})
-  // Ответы для подвопросов: { [taskId]: { [subIndex]: string } }
   const [subAnswers, setSubAnswers] = useState<Record<number, Record<number, string>>>({})
-  // Файлы для развернутых ответов
   const [files, setFiles] = useState<Record<number, File[]>>({})
-  // Результаты проверки
   const [results, setResults] = useState<Record<number, boolean>>({})
+  // Результаты по каждому подвопросу: { [taskId]: { [subIndex]: boolean } }
+  const [subResults, setSubResults] = useState<Record<number, Record<number, boolean>>>({})
   const [submitted, setSubmitted] = useState(false)
 
   useEffect(() => {
@@ -54,7 +52,6 @@ export default function StudentAssignmentPage() {
         setTasks(formattedTasks)
       }
 
-      // Загружаем сохраненные ответы
       const { data: subs } = await supabase
         .from('hw_submissions')
         .select('*')
@@ -64,11 +61,11 @@ export default function StudentAssignmentPage() {
       if (subs && subs.length > 0) {
         const savedAnswers: Record<number, string> = {}
         const savedSubAnswers: Record<number, Record<number, string>> = {}
+        const savedSubResults: Record<number, Record<number, boolean>> = {}
         const savedResults: Record<number, boolean> = {}
         let isSubmitted = false
         
         subs.forEach(sub => {
-          // Если ответ начинается с '{', значит это JSON с подвопросами
           if (sub.answer_text && sub.answer_text.startsWith('{')) {
             try {
               savedSubAnswers[sub.task_id] = JSON.parse(sub.answer_text)
@@ -79,6 +76,10 @@ export default function StudentAssignmentPage() {
             savedAnswers[sub.task_id] = sub.answer_text || ''
           }
 
+          if (sub.sub_results) {
+            savedSubResults[sub.task_id] = sub.sub_results
+          }
+
           if (sub.is_correct !== null) {
             savedResults[sub.task_id] = sub.is_correct
             isSubmitted = true
@@ -87,6 +88,7 @@ export default function StudentAssignmentPage() {
         
         setAnswers(savedAnswers)
         setSubAnswers(savedSubAnswers)
+        setSubResults(savedSubResults)
         setResults(savedResults)
         setSubmitted(isSubmitted)
       }
@@ -97,7 +99,6 @@ export default function StudentAssignmentPage() {
     fetchAssignment()
   }, [assignmentId, supabase])
 
-  // Автосохранение черновика
   const saveDraft = useCallback(async (taskId: number, text: string) => {
     if (!text.trim()) return; 
     const { data: { user } } = await supabase.auth.getUser()
@@ -121,10 +122,7 @@ export default function StudentAssignmentPage() {
     setSubAnswers(prev => {
       const newTaskSubs = { ...(prev[taskId] || {}), [subIndex]: value }
       const newSubAnswers = { ...prev, [taskId]: newTaskSubs }
-      
-      // Сохраняем как JSON-строку в answer_text
       saveDraft(taskId, JSON.stringify(newTaskSubs))
-      
       return newSubAnswers
     })
   }
@@ -158,7 +156,6 @@ export default function StudentAssignmentPage() {
     }))
   }
 
-  // Проверка обычного ответа
   const checkAnswer = (studentAnswer: string, correctAnswer: string | null, type: string) => {
     if (!correctAnswer || type === 'manual') return null
     if (!studentAnswer.trim()) return false
@@ -183,9 +180,9 @@ export default function StudentAssignmentPage() {
       if (!user) throw new Error('Не авторизован')
 
       const newResults: Record<number, boolean> = {}
+      const newSubResults: Record<number, Record<number, boolean>> = {}
 
       const submissionsToSave = await Promise.all(tasks.map(async (task) => {
-        // Загружаем файлы, если они есть
         const taskFiles = files[task.id] || []
         const imageUrls: string[] = []
         for (const file of taskFiles) {
@@ -197,22 +194,23 @@ export default function StudentAssignmentPage() {
           imageUrls.push(publicUrl)
         }
 
-        // ЛОГИКА ДЛЯ ПОДВОПРОСОВ
         if (task.sub_questions && task.sub_questions.length > 0) {
           const studentSubs = subAnswers[task.id] || {};
           let correctCount = 0;
           const totalSubs = task.sub_questions.length;
+          const currentSubResults: Record<number, boolean> = {};
 
           task.sub_questions.forEach((q: any, idx: number) => {
             const studentAns = (studentSubs[idx] || '').trim().replace(',', '.');
             const correctAns = (q.answer || '').trim().replace(',', '.');
             
-            if (studentAns === correctAns) {
-              correctCount++;
-            }
+            const isSubCorrect = studentAns === correctAns;
+            currentSubResults[idx] = isSubCorrect;
+            if (isSubCorrect) correctCount++;
           });
 
-          // Считаем балл пропорционально
+          newSubResults[task.id] = currentSubResults;
+
           const percent = totalSubs > 0 ? correctCount / totalSubs : 0;
           const maxScore = task.max_score || 1;
           const calculatedScore = Math.round(percent * maxScore);
@@ -224,15 +222,15 @@ export default function StudentAssignmentPage() {
             assignment_id: parseInt(assignmentId),
             task_id: task.id,
             student_id: user.id,
-            answer_text: JSON.stringify(studentSubs), // Сохраняем как JSON
+            answer_text: JSON.stringify(studentSubs),
             is_correct: isCorrect,
             score: calculatedScore,
+            sub_results: currentSubResults, // Сохраняем результаты подвопросов
             images: imageUrls,
             submitted_at: new Date().toISOString()
           };
         }
 
-        // ЛОГИКА ДЛЯ ОБЫЧНЫХ ЗАДАНИЙ
         const isCorrect = checkAnswer(answers[task.id] || '', task.answer_text, task.answer_type)
         if (isCorrect !== null) {
           newResults[task.id] = isCorrect
@@ -249,6 +247,7 @@ export default function StudentAssignmentPage() {
           answer_text: answers[task.id] || '',
           is_correct: isCorrect,
           score: autoScore,
+          sub_results: null,
           images: imageUrls,
           submitted_at: new Date().toISOString()
         }
@@ -261,6 +260,7 @@ export default function StudentAssignmentPage() {
       if (upsertError) throw upsertError
 
       setResults(newResults)
+      setSubResults(newSubResults)
       setSubmitted(true)
     } catch (err: any) {
       setError(err.message || 'Ошибка при отправке')
@@ -290,6 +290,7 @@ export default function StudentAssignmentPage() {
             const result = results[task.id]
             const hasResult = result !== undefined
             const hasSubQuestions = task.sub_questions && task.sub_questions.length > 0
+            const currentSubResults = subResults[task.id] || {}
 
             return (
               <div key={task.id} className={`rounded-lg bg-white p-6 shadow border ${hasResult ? (result ? 'border-green-500' : 'border-red-500') : 'border-gray-200'}`}>
@@ -315,22 +316,40 @@ export default function StudentAssignmentPage() {
                 {/* БЛОК ПОДВОПРОСОВ */}
                 {hasSubQuestions ? (
                   <div className="space-y-4 mt-4 border-t pt-4">
-                    {task.sub_questions.map((q: any, subIndex: number) => (
-                      <div key={subIndex} className="bg-gray-50 p-3 rounded border">
-                        <p className="text-sm font-medium mb-2">{subIndex + 1}. {q.text}</p>
-                        <input
-                          type="text"
-                          value={subAnswers[task.id]?.[subIndex] || ''}
-                          onChange={(e) => handleSubAnswerChange(task.id, subIndex, e.target.value)}
-                          disabled={submitted}
-                          placeholder="Ваш ответ..."
-                          className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
-                        />
-                      </div>
-                    ))}
+                    {task.sub_questions.map((q: any, subIndex: number) => {
+                      const isSubCorrect = currentSubResults[subIndex];
+                      const showSubResult = submitted && isSubCorrect !== undefined;
+
+                      return (
+                        <div 
+                          key={subIndex} 
+                          className={`p-3 rounded border ${
+                            showSubResult 
+                              ? (isSubCorrect ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300')
+                              : 'bg-gray-50'
+                          }`}
+                        >
+                          <p className="text-sm font-medium mb-2">{subIndex + 1}. {q.text}</p>
+                          <input
+                            type="text"
+                            value={subAnswers[task.id]?.[subIndex] || ''}
+                            onChange={(e) => handleSubAnswerChange(task.id, subIndex, e.target.value)}
+                            disabled={submitted}
+                            placeholder="Ваш ответ..."
+                            className={`w-full rounded border px-2 py-1 text-sm focus:outline-none disabled:bg-gray-100 ${
+                              showSubResult 
+                                ? (isSubCorrect ? 'border-green-400 text-green-800' : 'border-red-400 text-red-800')
+                                : 'border-gray-300 focus:border-blue-500'
+                            }`}
+                          />
+                          {showSubResult && !isSubCorrect && (
+                            <p className="text-xs text-red-600 mt-1">Правильный ответ: {q.answer}</p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
-                  // ОБЫЧНЫЙ ОТВЕТ
                   <div className="mt-4">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Ваш ответ:</label>
                     <textarea
@@ -346,7 +365,6 @@ export default function StudentAssignmentPage() {
                   </div>
                 )}
 
-                {/* Блок прикрепления файлов для развернутых */}
                 {task.answer_type === 'manual' && !hasSubQuestions && !submitted && (
                   <div 
                     onPaste={(e) => handlePaste(task.id, e)}
@@ -392,7 +410,7 @@ export default function StudentAssignmentPage() {
                     {result ? (
                       <span>✅ Все подвопросы решены верно!</span>
                     ) : (
-                      <span>❌ Есть ошибки в подвопросах.</span>
+                      <span>❌ Есть ошибки в подвопросах (смотрите подсветку выше).</span>
                     )}
                   </div>
                 )}
