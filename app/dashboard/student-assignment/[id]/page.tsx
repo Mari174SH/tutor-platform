@@ -24,7 +24,6 @@ export default function StudentAssignmentPage() {
   const [subAnswers, setSubAnswers] = useState<Record<number, Record<number, string>>>({})
   const [files, setFiles] = useState<Record<number, File[]>>({})
   const [results, setResults] = useState<Record<number, boolean>>({})
-  // Результаты по каждому подвопросу: { [taskId]: { [subIndex]: boolean } }
   const [subResults, setSubResults] = useState<Record<number, Record<number, boolean>>>({})
   const [submitted, setSubmitted] = useState(false)
 
@@ -225,7 +224,7 @@ export default function StudentAssignmentPage() {
             answer_text: JSON.stringify(studentSubs),
             is_correct: isCorrect,
             score: calculatedScore,
-            sub_results: currentSubResults, // Сохраняем результаты подвопросов
+            sub_results: currentSubResults,
             images: imageUrls,
             submitted_at: new Date().toISOString()
           };
@@ -313,7 +312,6 @@ export default function StudentAssignmentPage() {
                   </div>
                 )}
 
-                {/* БЛОК ПОДВОПРОСОВ */}
                 {hasSubQuestions ? (
                   <div className="space-y-4 mt-4 border-t pt-4">
                     {task.sub_questions.map((q: any, subIndex: number) => {
