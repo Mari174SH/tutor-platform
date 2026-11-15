@@ -40,12 +40,13 @@ export default function DashboardPage() {
             .select('*')
             .in('id', assignmentIds)
 
+          // Запрашиваем sub_questions и max_score для правильного подсчета
           const { data: tasksData } = await supabase
             .from('hw_assignment_tasks')
-            .select('assignment_id, hw_tasks(max_score)')
+            .select('assignment_id, hw_tasks(max_score, sub_questions)')
             .in('assignment_id', assignmentIds)
 
-          // Теперь берем score и sub_results из ответов
+          // Запрашиваем score и is_correct
           const { data: submissionsData } = await supabase
             .from('hw_submissions')
             .select('assignment_id, is_correct, score')
@@ -56,12 +57,12 @@ export default function DashboardPage() {
             const myTasks = tasksData?.filter(t => t.assignment_id === link.assignment_id) || []
             const totalTasks = myTasks.length
             
-            // Суммируем максимальные баллы по всем задачам ДЗ
+            // Суммируем макс. баллы (учитываем, что max_score может быть null)
             const totalMaxScore = myTasks.reduce((sum, t) => sum + (t.hw_tasks?.max_score || 1), 0)
 
             const mySubmissions = submissionsData?.filter(s => s.assignment_id === link.assignment_id) || []
             
-            // Считаем набранные баллы
+            // Считаем набранные баллы (только там, где score не null)
             let totalScore = 0
             let checkedCount = 0
             
@@ -72,7 +73,6 @@ export default function DashboardPage() {
               }
             })
 
-            // Процент считаем по баллам, а не по количеству задач
             const percent = checkedCount > 0 
               ? Math.round((totalScore / totalMaxScore) * 100) 
               : null
@@ -158,7 +158,6 @@ export default function DashboardPage() {
                       )}
                     </div>
 
-                    {/* Прогресс-бар (по баллам) */}
                     {isCompleted && item.percent !== null && (
                       <div className="mt-4 pt-4 border-t border-gray-100">
                         <div className="flex justify-between items-center mb-1">
