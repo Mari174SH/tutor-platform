@@ -70,22 +70,25 @@ export default function AssignmentDetailsPage() {
     fetchStudentAnswers()
   }, [selectedStudentId, assignmentId, supabase])
 
-  const handleMarkCorrect = async (submissionId: number, isCorrect: boolean) => {
+  // Оценка тестовых заданий (с сохранением баллов)
+  const handleMarkCorrect = async (submissionId: number, isCorrect: boolean, maxScore: number) => {
+    const newScore = isCorrect ? maxScore : 0;
     const { error } = await supabase
       .from('hw_submissions')
-      .update({ is_correct: isCorrect })
+      .update({ is_correct: isCorrect, score: newScore })
       .eq('id', submissionId)
 
     if (!error) {
       setStudentTasks(prev => prev.map(t => {
         if (t.submission && t.submission.id === submissionId) {
-          return { ...t, submission: { ...t.submission, is_correct: isCorrect } }
+          return { ...t, submission: { ...t.submission, is_correct: isCorrect, score: newScore } }
         }
         return t
       }))
     }
   }
 
+  // Сохранение баллов для развернутых заданий
   const handleSaveScore = async (submissionId: number, score: number) => {
     const { error } = await supabase
       .from('hw_submissions')
@@ -104,23 +107,39 @@ export default function AssignmentDetailsPage() {
     }
   }
 
+  // Подсчет статистики отдельно для тестов и развернутой части
   const stats = useMemo(() => {
-    let totalMaxScore = 0
-    let totalScore = 0
+    let totalTasks = studentTasks.length;
+    let testTasks = 0;
+    let testCorrect = 0;
+    let manualTasks = 0;
+    let manualScore = 0;
+    let manualMaxScore = 0;
+
     studentTasks.forEach(t => {
-      // Берем балл ученика (если null, то 0)
-      const studentScore = t.submission?.score ?? 0
-      // Берем макс. балл (если null, то 1)
-      const maxScore = t.max_score ?? 1
-      
-      totalScore += studentScore
-      totalMaxScore += maxScore
-    })
+      if (t.answer_type === 'manual') {
+        manualTasks++;
+        manualMaxScore += t.max_score || 1;
+        if (t.submission && t.submission.score !== null) {
+          manualScore += t.submission.score;
+        }
+      } else {
+        testTasks++;
+        if (t.submission && t.submission.is_correct === true) {
+          testCorrect++;
+        }
+      }
+    });
 
     return {
-      totalScore,
-      totalMaxScore,
-      percent: totalMaxScore > 0 ? Math.round((totalScore / totalMaxScore) * 100) : 0
+      totalTasks,
+      testTasks,
+      testCorrect,
+      testPercent: testTasks > 0 ? Math.round((testCorrect / testTasks) * 100) : 0,
+      manualTasks,
+      manualScore,
+      manualMaxScore,
+      manualPercent: manualMaxScore > 0 ? Math.round((manualScore / manualMaxScore) * 100) : 0
     }
   }, [studentTasks])
 
@@ -156,21 +175,39 @@ export default function AssignmentDetailsPage() {
 
           <div className="md:col-span-3 space-y-4">
             {selectedStudentId && (
-              <div className="bg-white rounded-lg shadow p-4 border border-gray-200 flex items-center gap-6">
-                <div>
-                  <p className="text-sm text-gray-500">Баллы</p>
-                  <p className={`text-2xl font-bold ${stats.percent >= 80 ? 'text-green-600' : stats.percent >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {stats.totalScore} / {stats.totalMaxScore}
-                  </p>
-                </div>
-                <div className="flex-1">
-                  <div className="flex justify-between text-xs text-gray-500 mb-1">
-                    <span>Процент: {stats.percent}%</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-white rounded-lg shadow p-4 border border-gray-200">
+                  <p className="text-sm text-gray-500 mb-1">Тестовая часть</p>
+                  <div className="flex items-end gap-3">
+                    <p className={`text-2xl font-bold ${stats.testPercent >= 80 ? 'text-green-600' : stats.testPercent >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                      {stats.testPercent}%
+                    </p>
+                    <p className="text-sm text-gray-500 mb-1">
+                      ({stats.testCorrect} из {stats.testTasks})
+                    </p>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
                     <div 
-                      className={`h-2 rounded-full ${stats.percent >= 80 ? 'bg-green-500' : stats.percent >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} 
-                      style={{ width: `${stats.percent}%` }}
+                      className={`h-2 rounded-full ${stats.testPercent >= 80 ? 'bg-green-500' : stats.testPercent >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} 
+                      style={{ width: `${stats.testPercent}%` }}
+                    ></div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg shadow p-4 border border-gray-200">
+                  <p className="text-sm text-gray-500 mb-1">Развернутая часть</p>
+                  <div className="flex items-end gap-3">
+                    <p className={`text-2xl font-bold ${stats.manualPercent >= 80 ? 'text-green-600' : stats.manualPercent >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                      {stats.manualScore} / {stats.manualMaxScore}
+                    </p>
+                    <p className="text-sm text-gray-500 mb-1">
+                      баллов
+                    </p>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                    <div 
+                      className={`h-2 rounded-full ${stats.manualPercent >= 80 ? 'bg-green-500' : stats.manualPercent >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} 
+                      style={{ width: `${stats.manualPercent}%` }}
                     ></div>
                   </div>
                 </div>
@@ -192,11 +229,8 @@ export default function AssignmentDetailsPage() {
                     </div>
                   </div>
 
-                  {/* Текст задания и картинки задания */}
                   <div className="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded border border-gray-100 whitespace-pre-wrap">
                     <MathText text={task.content_html} />
-                    
-                    {/* ВОТ ЗДЕСЬ ВЫВОДИМ КАРТИНКИ ЗАДАНИЯ */}
                     {task.images && task.images.length > 0 && (
                       <div className="mt-3 flex flex-wrap gap-4">
                         {task.images.map((url: string, i: number) => (
@@ -216,7 +250,6 @@ export default function AssignmentDetailsPage() {
                           {task.submission.answer_text || <span className="text-gray-400 italic">Пустой ответ</span>}
                         </div>
 
-                        {/* Прикрепленные учеником файлы */}
                         {task.submission.images && task.submission.images.length > 0 && (
                           <div className="flex flex-wrap gap-4 mt-2">
                             {task.submission.images.map((url: string, i: number) => (
@@ -231,7 +264,7 @@ export default function AssignmentDetailsPage() {
                         {task.answer_type !== 'manual' && (
                           <div className="flex items-center gap-2 mt-2">
                             <button
-                              onClick={() => handleMarkCorrect(task.submission.id, true)}
+                              onClick={() => handleMarkCorrect(task.submission.id, true, task.max_score || 1)}
                               className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
                                 task.submission.is_correct === true 
                                   ? 'bg-green-600 text-white' 
@@ -241,7 +274,7 @@ export default function AssignmentDetailsPage() {
                               Верно
                             </button>
                             <button
-                              onClick={() => handleMarkCorrect(task.submission.id, false)}
+                              onClick={() => handleMarkCorrect(task.submission.id, false, task.max_score || 1)}
                               className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
                                 task.submission.is_correct === false 
                                   ? 'bg-red-600 text-white' 
@@ -253,7 +286,7 @@ export default function AssignmentDetailsPage() {
                           </div>
                         )}
 
-                        {/* Оценка для развернутых заданий (баллы) */}
+                        {/* Оценка для развернутых заданий */}
                         {task.answer_type === 'manual' && (
                           <div className="flex items-center gap-2 mt-2">
                             <label className="text-sm text-gray-700">Баллы:</label>
