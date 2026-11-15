@@ -40,13 +40,11 @@ export default function DashboardPage() {
             .select('*')
             .in('id', assignmentIds)
 
-          // Запрашиваем sub_questions и max_score для правильного подсчета
           const { data: tasksData } = await supabase
             .from('hw_assignment_tasks')
             .select('assignment_id, hw_tasks(max_score, sub_questions)')
             .in('assignment_id', assignmentIds)
 
-          // Запрашиваем score и is_correct
           const { data: submissionsData } = await supabase
             .from('hw_submissions')
             .select('assignment_id, is_correct, score')
@@ -57,12 +55,10 @@ export default function DashboardPage() {
             const myTasks = tasksData?.filter(t => t.assignment_id === link.assignment_id) || []
             const totalTasks = myTasks.length
             
-            // Суммируем макс. баллы
             const totalMaxScore = myTasks.reduce((sum, t) => sum + (t.hw_tasks?.max_score || 1), 0)
 
             const mySubmissions = submissionsData?.filter(s => s.assignment_id === link.assignment_id) || []
             
-            // Считаем набранные баллы
             let totalScore = 0
             let checkedCount = 0
             
@@ -158,7 +154,6 @@ export default function DashboardPage() {
                       )}
                     </div>
 
-                    {/* Прогресс-бар по баллам */}
                     {isCompleted && item.percent !== null && (
                       <div className="mt-4 pt-4 border-t border-gray-100">
                         <div className="flex justify-between items-center mb-1">
