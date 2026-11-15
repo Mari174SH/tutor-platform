@@ -21,6 +21,9 @@ export default function NewTaskPage() {
   const [answerType, setAnswerType] = useState('numeric')
   const [files, setFiles] = useState<File[]>([])
   
+  // Подвопросы
+  const [subQuestions, setSubQuestions] = useState<{text: string, answer: string}[]>([])
+  
   const [selectedTopicId, setSelectedTopicId] = useState('')
   const [selectedSubtopicId, setSelectedSubtopicId] = useState('')
 
@@ -74,6 +77,19 @@ export default function NewTaskPage() {
     }
   }
 
+  // Работа с подвопросами
+  const addSubQuestion = () => {
+    setSubQuestions(prev => [...prev, { text: '', answer: '' }])
+  }
+
+  const updateSubQuestion = (index: number, field: 'text' | 'answer', value: string) => {
+    setSubQuestions(prev => prev.map((q, i) => i === index ? { ...q, [field]: value } : q))
+  }
+
+  const removeSubQuestion = (index: number) => {
+    setSubQuestions(prev => prev.filter((_, i) => i !== index))
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -83,7 +99,6 @@ export default function NewTaskPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Не авторизован')
 
-      // Берем балл из выбранной темы
       const topic = topics.find(t => t.id === parseInt(selectedTopicId))
       const maxScore = topic?.max_score || 1
 
@@ -100,12 +115,13 @@ export default function NewTaskPage() {
       const { error: insertError } = await supabase.from('hw_tasks').insert({
         title,
         content_html: content,
-        answer_text: answerText,
+        answer_text: answerText, // Основной ответ (если есть)
         answer_type: answerType,
-        max_score: maxScore, // Берем из темы
+        max_score: maxScore,
         images: imageUrls,
         topic_id: selectedTopicId ? parseInt(selectedTopicId) : null,
         subtopic_id: selectedSubtopicId ? parseInt(selectedSubtopicId) : null,
+        sub_questions: subQuestions, // Сохраняем подвопросы
       })
 
       if (insertError) throw insertError
@@ -155,12 +171,12 @@ export default function NewTaskPage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700">Название (для себя)</label>
-            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Например: Задача на скорость" className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" />
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Например: ОГЭ Шины" className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700">Текст задания</label>
-            <textarea required rows={5} value={content} onChange={(e) => setContent(e.target.value)} placeholder="Введите условие задачи..." className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" />
+            <label className="block text-sm font-medium text-gray-700">Общее условие (текст задания)</label>
+            <textarea required rows={5} value={content} onChange={(e) => setContent(e.target.value)} placeholder="Введите общее условие..." className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" />
           </div>
 
           <div onPaste={handlePaste} tabIndex={0} className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:bg-gray-50 transition-colors">
@@ -180,9 +196,44 @@ export default function NewTaskPage() {
             </div>
           )}
 
+          {/* БЛОК ПОДВОПРОСОВ */}
+          <div className="border-t pt-4">
+            <div className="flex justify-between items-center mb-3">
+              <label className="block text-sm font-medium text-gray-700">Подвопросы (для заданий 1-5)</label>
+              <button type="button" onClick={addSubQuestion} className="text-sm text-blue-600 hover:underline">
+                + Добавить подвопрос
+              </button>
+            </div>
+            
+            {subQuestions.map((q, index) => (
+              <div key={index} className="flex gap-2 mb-2 items-start">
+                <div className="flex-1">
+                  <input 
+                    type="text" 
+                    placeholder="Текст вопроса" 
+                    value={q.text} 
+                    onChange={(e) => updateSubQuestion(index, 'text', e.target.value)} 
+                    className="w-full rounded border px-2 py-1 text-sm" 
+                  />
+                </div>
+                <div className="w-24">
+                  <input 
+                    type="text" 
+                    placeholder="Ответ" 
+                    value={q.answer} 
+                    onChange={(e) => updateSubQuestion(index, 'answer', e.target.value)} 
+                    className="w-full rounded border px-2 py-1 text-sm" 
+                  />
+                </div>
+                <button type="button" onClick={() => removeSubQuestion(index)} className="text-red-500 font-bold px-2 py-1">✕</button>
+              </div>
+            ))}
+            {subQuestions.length === 0 && <p className="text-xs text-gray-500">Нет подвопросов. Добавьте, если это задание ОГЭ 1-5.</p>}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Тип ответа</label>
+              <label className="block text-sm font-medium text-gray-700">Тип ответа (для основного)</label>
               <select value={answerType} onChange={(e) => setAnswerType(e.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2">
                 <option value="numeric">Число</option>
                 <option value="exact">Точный текст</option>
@@ -190,12 +241,12 @@ export default function NewTaskPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Правильный ответ</label>
+              <label className="block text-sm font-medium text-gray-700">Правильный ответ (основной)</label>
               <input 
                 type="text" 
                 value={answerText} 
                 onChange={(e) => handleAnswerChange(e.target.value)} 
-                placeholder="Например: 74 или 1,5" 
+                placeholder="Например: 74" 
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" 
               />
             </div>
