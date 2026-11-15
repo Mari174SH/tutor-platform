@@ -47,7 +47,7 @@ export default function AssignmentDetailsPage() {
     const fetchStudentAnswers = async () => {
       const { data: taskLinks } = await supabase
         .from('hw_assignment_tasks')
-        .select('task_id, position, hw_tasks(id, title, content_html, answer_text, answer_type, images, max_score)')
+        .select('task_id, position, hw_tasks(id, title, content_html, answer_text, answer_type, images, max_score, sub_questions)')
         .eq('assignment_id', assignmentId)
         .order('position')
 
@@ -70,7 +70,6 @@ export default function AssignmentDetailsPage() {
     fetchStudentAnswers()
   }, [selectedStudentId, assignmentId, supabase])
 
-  // Оценка тестовых заданий (с сохранением баллов)
   const handleMarkCorrect = async (submissionId: number, isCorrect: boolean, maxScore: number) => {
     const newScore = isCorrect ? maxScore : 0;
     const { error } = await supabase
@@ -88,7 +87,6 @@ export default function AssignmentDetailsPage() {
     }
   }
 
-  // Сохранение баллов для развернутых заданий
   const handleSaveScore = async (submissionId: number, score: number) => {
     const { error } = await supabase
       .from('hw_submissions')
@@ -107,7 +105,6 @@ export default function AssignmentDetailsPage() {
     }
   }
 
-  // Подсчет статистики отдельно для тестов и развернутой части
   const stats = useMemo(() => {
     let totalTasks = studentTasks.length;
     let testTasks = 0;
@@ -215,101 +212,142 @@ export default function AssignmentDetailsPage() {
             )}
 
             {selectedStudentId ? (
-              studentTasks.map((task, index) => (
-                <div key={task.id} className="bg-white rounded-lg shadow border border-gray-200 p-6">
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="font-bold text-gray-800">Задание {index + 1}</h3>
-                    <div className="text-sm text-right">
-                      <span className="text-gray-500 block mb-1">Макс. балл: {task.max_score || 1}</span>
-                      {task.answer_text && (
-                        <span className="font-mono bg-green-50 px-2 py-1 rounded text-green-700 font-bold">
-                          {task.answer_text}
-                        </span>
+              studentTasks.map((task, index) => {
+                const hasSubQuestions = task.sub_questions && task.sub_questions.length > 0;
+                const subResults = task.submission?.sub_results || {};
+
+                return (
+                  <div key={task.id} className="bg-white rounded-lg shadow border border-gray-200 p-6">
+                    <div className="flex justify-between items-start mb-4">
+                      <h3 className="font-bold text-gray-800">Задание {index + 1}</h3>
+                      <div className="text-sm text-right">
+                        <span className="text-gray-500 block mb-1">Макс. балл: {task.max_score || 1}</span>
+                        {!hasSubQuestions && task.answer_text && (
+                          <span className="font-mono bg-green-50 px-2 py-1 rounded text-green-700 font-bold">
+                            {task.answer_text}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded border border-gray-100 whitespace-pre-wrap">
+                      <MathText text={task.content_html} />
+                      {task.images && task.images.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-4">
+                          {task.images.map((url: string, i: number) => (
+                            <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block border rounded overflow-hidden hover:opacity-80">
+                              <img src={url} alt={`Task image ${i + 1}`} className="max-h-48 w-auto object-contain" />
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-4">
+                      <p className="text-xs font-bold text-gray-500 uppercase mb-2">Ответ ученика:</p>
+                      {task.submission ? (
+                        <div className="flex flex-col gap-3">
+                          
+                          {/* ОТОБРАЖЕНИЕ ПОДВОПРОСОВ */}
+                          {hasSubQuestions ? (
+                            <div className="space-y-2">
+                              {task.sub_questions.map((q: any, subIndex: number) => {
+                                const isCorrect = subResults[subIndex];
+                                let studentAns = '';
+                                try {
+                                  const parsed = JSON.parse(task.submission.answer_text || '{}');
+                                  studentAns = parsed[subIndex] || '';
+                                } catch(e) {}
+
+                                return (
+                                  <div key={subIndex} className={`p-2 rounded border text-sm ${isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                                    <p className="font-medium">{subIndex + 1}. {q.text}</p>
+                                    <div className="flex justify-between mt-1">
+                                      <span>Ответ: {studentAns || '—'}</span>
+                                      <span className={isCorrect ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
+                                        {isCorrect ? '✅ Верно' : `❌ Неверно (эталон: ${q.answer})`}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <>
+                              <div className="p-3 bg-blue-50 border border-blue-100 rounded-md text-gray-800 min-h-[3rem]">
+                                {task.submission.answer_text || <span className="text-gray-400 italic">Пустой ответ</span>}
+                              </div>
+                              
+                              {task.submission.images && task.submission.images.length > 0 && (
+                                <div className="flex flex-wrap gap-4 mt-2">
+                                  {task.submission.images.map((url: string, i: number) => (
+                                    <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block border-2 border-blue-200 rounded overflow-hidden hover:opacity-80">
+                                      <img src={url} alt={`Student answer ${i + 1}`} className="max-h-48 w-auto object-contain" />
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          )}
+
+                          {/* Оценка для тестовых заданий (если НЕТ подвопросов) */}
+                          {task.answer_type !== 'manual' && !hasSubQuestions && (
+                            <div className="flex items-center gap-2 mt-2">
+                              <button
+                                onClick={() => handleMarkCorrect(task.submission.id, true, task.max_score || 1)}
+                                className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
+                                  task.submission.is_correct === true 
+                                    ? 'bg-green-600 text-white' 
+                                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                                }`}
+                              >
+                                Верно
+                              </button>
+                              <button
+                                onClick={() => handleMarkCorrect(task.submission.id, false, task.max_score || 1)}
+                                className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
+                                  task.submission.is_correct === false 
+                                    ? 'bg-red-600 text-white' 
+                                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                                }`}
+                              >
+                                Неверно
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Оценка для развернутых заданий (если НЕТ подвопросов) */}
+                          {task.answer_type === 'manual' && !hasSubQuestions && (
+                            <div className="flex items-center gap-2 mt-2">
+                              <label className="text-sm text-gray-700">Баллы:</label>
+                              <input
+                                type="number"
+                                min="0"
+                                max={task.max_score || 1}
+                                value={task.submission.score || 0}
+                                onChange={(e) => handleSaveScore(task.submission.id, parseInt(e.target.value) || 0)}
+                                className="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
+                              />
+                              <span className="text-sm text-gray-500">из {task.max_score || 1}</span>
+                            </div>
+                          )}
+
+                          {/* Если есть подвопросы, показываем итоговый балл */}
+                          {hasSubQuestions && (
+                            <div className="mt-2 text-sm font-medium">
+                              Итоговый балл: {task.submission.score || 0} из {task.max_score || 1}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-gray-50 border border-gray-200 rounded-md text-gray-500 italic text-sm">
+                          Ученик еще не ответил на это задание.
+                        </div>
                       )}
                     </div>
                   </div>
-
-                  <div className="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded border border-gray-100 whitespace-pre-wrap">
-                    <MathText text={task.content_html} />
-                    {task.images && task.images.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-4">
-                        {task.images.map((url: string, i: number) => (
-                          <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block border rounded overflow-hidden hover:opacity-80">
-                            <img src={url} alt={`Task image ${i + 1}`} className="max-h-48 w-auto object-contain" />
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-4">
-                    <p className="text-xs font-bold text-gray-500 uppercase mb-2">Ответ ученика:</p>
-                    {task.submission ? (
-                      <div className="flex flex-col gap-3">
-                        <div className="p-3 bg-blue-50 border border-blue-100 rounded-md text-gray-800 min-h-[3rem]">
-                          {task.submission.answer_text || <span className="text-gray-400 italic">Пустой ответ</span>}
-                        </div>
-
-                        {task.submission.images && task.submission.images.length > 0 && (
-                          <div className="flex flex-wrap gap-4 mt-2">
-                            {task.submission.images.map((url: string, i: number) => (
-                              <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block border-2 border-blue-200 rounded overflow-hidden hover:opacity-80">
-                                <img src={url} alt={`Student answer ${i + 1}`} className="max-h-48 w-auto object-contain" />
-                              </a>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Оценка для тестовых заданий */}
-                        {task.answer_type !== 'manual' && (
-                          <div className="flex items-center gap-2 mt-2">
-                            <button
-                              onClick={() => handleMarkCorrect(task.submission.id, true, task.max_score || 1)}
-                              className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
-                                task.submission.is_correct === true 
-                                  ? 'bg-green-600 text-white' 
-                                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                              }`}
-                            >
-                              Верно
-                            </button>
-                            <button
-                              onClick={() => handleMarkCorrect(task.submission.id, false, task.max_score || 1)}
-                              className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${
-                                task.submission.is_correct === false 
-                                  ? 'bg-red-600 text-white' 
-                                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                              }`}
-                            >
-                              Неверно
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Оценка для развернутых заданий */}
-                        {task.answer_type === 'manual' && (
-                          <div className="flex items-center gap-2 mt-2">
-                            <label className="text-sm text-gray-700">Баллы:</label>
-                            <input
-                              type="number"
-                              min="0"
-                              max={task.max_score || 1}
-                              value={task.submission.score || 0}
-                              onChange={(e) => handleSaveScore(task.submission.id, parseInt(e.target.value) || 0)}
-                              className="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
-                            />
-                            <span className="text-sm text-gray-500">из {task.max_score || 1}</span>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="p-3 bg-gray-50 border border-gray-200 rounded-md text-gray-500 italic text-sm">
-                        Ученик еще не ответил на это задание.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
                 Выберите ученика слева.
