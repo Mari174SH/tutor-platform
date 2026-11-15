@@ -45,6 +45,7 @@ export default function AssignmentDetailsPage() {
     if (!selectedStudentId) return
 
     const fetchStudentAnswers = async () => {
+      // ВАЖНО: Запрашиваем sub_questions
       const { data: taskLinks } = await supabase
         .from('hw_assignment_tasks')
         .select('task_id, position, hw_tasks(id, title, content_html, answer_text, answer_type, images, max_score, sub_questions)')
@@ -116,7 +117,7 @@ export default function AssignmentDetailsPage() {
     }
   }
 
-    const stats = useMemo(() => {
+  const stats = useMemo(() => {
     let testTasks = 0;
     let testCorrect = 0;
     let manualTasks = 0;
@@ -124,37 +125,19 @@ export default function AssignmentDetailsPage() {
     let manualMaxScore = 0;
 
     studentTasks.forEach(t => {
-      // Проверяем, есть ли у задания подвопросы (парсим, если пришла строка)
-      let hasSubs = false;
-      if (t.sub_questions) {
-        if (typeof t.sub_questions === 'string') {
-          try {
-            const parsed = JSON.parse(t.sub_questions);
-            hasSubs = Array.isArray(parsed) && parsed.length > 0;
-          } catch (e) {}
-        } else if (Array.isArray(t.sub_questions)) {
-          hasSubs = t.sub_questions.length > 0;
-        }
-      }
+      // Проверяем наличие подвопросов
+      const hasSubs = t.sub_questions && t.sub_questions.length > 0;
       
-      // Если есть подвопросы ИЛИ это не manual — считаем тестовым
+      // Если есть подвопросы или это не manual — тестовое
       if (hasSubs || t.answer_type !== 'manual') {
         testTasks++;
         if (hasSubs) {
-          // Для подвопросов считаем "верным", если все sub_results = true
-          if (t.submission && t.submission.sub_results) {
-            const results = t.submission.sub_results;
-            const allTrue = Object.values(results).every(v => v === true);
-            if (allTrue) testCorrect++;
-          }
+          const allSubsCorrect = t.submission?.sub_results && Object.values(t.submission.sub_results).every(v => v === true);
+          if (allSubsCorrect) testCorrect++;
         } else {
-          // Для обычных тестов
-          if (t.submission && t.submission.is_correct === true) {
-            testCorrect++;
-          }
+          if (t.submission && t.submission.is_correct === true) testCorrect++;
         }
       } else {
-        // Развернутое задание (только для ручной проверки)
         manualTasks++;
         manualMaxScore += t.max_score || 1;
         if (t.submission && t.submission.score !== null) {
