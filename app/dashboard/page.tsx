@@ -57,12 +57,12 @@ export default function DashboardPage() {
             const myTasks = tasksData?.filter(t => t.assignment_id === link.assignment_id) || []
             const totalTasks = myTasks.length
             
-            // Суммируем макс. баллы (учитываем, что max_score может быть null)
+            // Суммируем макс. баллы
             const totalMaxScore = myTasks.reduce((sum, t) => sum + (t.hw_tasks?.max_score || 1), 0)
 
             const mySubmissions = submissionsData?.filter(s => s.assignment_id === link.assignment_id) || []
             
-            // Считаем набранные баллы (только там, где score не null)
+            // Считаем набранные баллы
             let totalScore = 0
             let checkedCount = 0
             
@@ -158,6 +158,7 @@ export default function DashboardPage() {
                       )}
                     </div>
 
+                    {/* Прогресс-бар по баллам */}
                     {isCompleted && item.percent !== null && (
                       <div className="mt-4 pt-4 border-t border-gray-100">
                         <div className="flex justify-between items-center mb-1">
