@@ -24,7 +24,6 @@ export default function StudentAssignmentPage() {
   const [results, setResults] = useState<Record<number, boolean>>({})
   const [submitted, setSubmitted] = useState(false)
 
-  // Загрузка данных
   useEffect(() => {
     const fetchAssignment = async () => {
       const { data: { user } } = await supabase.auth.getUser()
@@ -49,7 +48,6 @@ export default function StudentAssignmentPage() {
         setTasks(formattedTasks)
       }
 
-      // Загружаем сохраненные ответы (черновик)
       const { data: subs } = await supabase
         .from('hw_submissions')
         .select('*')
@@ -65,7 +63,7 @@ export default function StudentAssignmentPage() {
           savedAnswers[sub.task_id] = sub.answer_text || ''
           if (sub.is_correct !== null) {
             savedResults[sub.task_id] = sub.is_correct
-            isSubmitted = true // Если есть оценка, значит, уже отправлено
+            isSubmitted = true
           }
         })
         
@@ -80,25 +78,23 @@ export default function StudentAssignmentPage() {
     fetchAssignment()
   }, [assignmentId, supabase])
 
-  // АВТОСОХРАНЕНИЕ ЧЕРНОВИКА
   const saveDraft = useCallback(async (taskId: number, text: string) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    // Сохраняем только текст, без оценки (is_correct: null)
     await supabase.from('hw_submissions').upsert({
       assignment_id: parseInt(assignmentId),
       task_id: taskId,
       student_id: user.id,
       answer_text: text,
-      is_correct: null, // Черновик
+      is_correct: null,
       submitted_at: new Date().toISOString()
     }, { onConflict: 'assignment_id, task_id, student_id' })
   }, [assignmentId, supabase])
 
   const handleAnswerChange = (taskId: number, value: string) => {
     setAnswers(prev => ({ ...prev, [taskId]: value }))
-    saveDraft(taskId, value) // Сохраняем при вводе
+    saveDraft(taskId, value)
   }
 
   const handleFileChange = (taskId: number, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -161,7 +157,6 @@ export default function StudentAssignmentPage() {
           newResults[task.id] = isCorrect
         }
 
-        // Загружаем файлы, если они есть
         const taskFiles = files[task.id] || []
         const imageUrls: string[] = []
         for (const file of taskFiles) {
@@ -173,12 +168,18 @@ export default function StudentAssignmentPage() {
           imageUrls.push(publicUrl)
         }
 
+        // Автоматический балл для тестовых заданий
+        const autoScore = (task.answer_type !== 'manual' && isCorrect !== null) 
+          ? (isCorrect ? (task.max_score || 1) : 0) 
+          : null;
+
         return {
           assignment_id: parseInt(assignmentId),
           task_id: task.id,
           student_id: user.id,
           answer_text: answers[task.id] || '',
           is_correct: isCorrect,
+          score: autoScore,
           images: imageUrls,
           submitted_at: new Date().toISOString()
         }
