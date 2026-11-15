@@ -25,6 +25,8 @@ export default function StudentAssignmentPage() {
   const [files, setFiles] = useState<Record<number, File[]>>({})
   const [results, setResults] = useState<Record<number, boolean>>({})
   const [subResults, setSubResults] = useState<Record<number, Record<number, boolean>>>({})
+  // Добавляем состояние для баллов
+  const [scores, setScores] = useState<Record<number, number | null>>({})
   const [submitted, setSubmitted] = useState(false)
 
   useEffect(() => {
@@ -62,6 +64,7 @@ export default function StudentAssignmentPage() {
         const savedSubAnswers: Record<number, Record<number, string>> = {}
         const savedSubResults: Record<number, Record<number, boolean>> = {}
         const savedResults: Record<number, boolean> = {}
+        const savedScores: Record<number, number | null> = {}
         let isSubmitted = false
         
         subs.forEach(sub => {
@@ -79,6 +82,11 @@ export default function StudentAssignmentPage() {
             savedSubResults[sub.task_id] = sub.sub_results
           }
 
+          // Сохраняем баллы
+          if (sub.score !== undefined) {
+            savedScores[sub.task_id] = sub.score
+          }
+
           if (sub.is_correct !== null) {
             savedResults[sub.task_id] = sub.is_correct
             isSubmitted = true
@@ -89,6 +97,7 @@ export default function StudentAssignmentPage() {
         setSubAnswers(savedSubAnswers)
         setSubResults(savedSubResults)
         setResults(savedResults)
+        setScores(savedScores)
         setSubmitted(isSubmitted)
       }
 
@@ -180,6 +189,7 @@ export default function StudentAssignmentPage() {
 
       const newResults: Record<number, boolean> = {}
       const newSubResults: Record<number, Record<number, boolean>> = {}
+      const newScores: Record<number, number | null> = {}
 
       const submissionsToSave = await Promise.all(tasks.map(async (task) => {
         const taskFiles = files[task.id] || []
@@ -213,6 +223,7 @@ export default function StudentAssignmentPage() {
           const percent = totalSubs > 0 ? correctCount / totalSubs : 0;
           const maxScore = task.max_score || 1;
           const calculatedScore = Math.round(percent * maxScore);
+          newScores[task.id] = calculatedScore;
           
           const isCorrect = correctCount === totalSubs;
           if (isCorrect) newResults[task.id] = true;
@@ -238,6 +249,8 @@ export default function StudentAssignmentPage() {
         const autoScore = (task.answer_type !== 'manual' && isCorrect !== null) 
           ? (isCorrect ? (task.max_score || 1) : 0) 
           : null;
+        
+        newScores[task.id] = autoScore;
 
         return {
           assignment_id: parseInt(assignmentId),
@@ -260,6 +273,7 @@ export default function StudentAssignmentPage() {
 
       setResults(newResults)
       setSubResults(newSubResults)
+      setScores(newScores)
       setSubmitted(true)
     } catch (err: any) {
       setError(err.message || 'Ошибка при отправке')
@@ -290,6 +304,7 @@ export default function StudentAssignmentPage() {
             const hasResult = result !== undefined
             const hasSubQuestions = task.sub_questions && task.sub_questions.length > 0
             const currentSubResults = subResults[task.id] || {}
+            const taskScore = scores[task.id]
 
             return (
               <div key={task.id} className={`rounded-lg bg-white p-6 shadow border ${hasResult ? (result ? 'border-green-500' : 'border-red-500') : 'border-gray-200'}`}>
@@ -413,7 +428,14 @@ export default function StudentAssignmentPage() {
                   </div>
                 )}
 
-                {submitted && task.answer_type === 'manual' && !hasResult && !hasSubQuestions && (
+                {/* Отображение баллов для развернутых заданий */}
+                {submitted && task.answer_type === 'manual' && !hasSubQuestions && taskScore !== undefined && taskScore !== null && (
+                  <div className="mt-3 p-3 rounded-md text-sm bg-blue-50 text-blue-700 font-medium">
+                    Баллы за задание: {taskScore} из {task.max_score || 1}
+                  </div>
+                )}
+
+                {submitted && task.answer_type === 'manual' && !hasSubQuestions && (taskScore === undefined || taskScore === null) && (
                   <div className="mt-3 p-3 rounded-md text-sm bg-blue-50 text-blue-700">
                     ⏳ Ответ отправлен на проверку репетитору.
                   </div>
