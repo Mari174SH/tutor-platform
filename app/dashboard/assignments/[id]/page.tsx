@@ -108,10 +108,13 @@ export default function AssignmentDetailsPage() {
     let totalMaxScore = 0
     let totalScore = 0
     studentTasks.forEach(t => {
-      if (t.submission && t.submission.score !== null) {
-        totalScore += t.submission.score
-      }
-      totalMaxScore += t.max_score || 1
+      // Берем балл ученика (если null, то 0)
+      const studentScore = t.submission?.score ?? 0
+      // Берем макс. балл (если null, то 1)
+      const maxScore = t.max_score ?? 1
+      
+      totalScore += studentScore
+      totalMaxScore += maxScore
     })
 
     return {
