@@ -61,7 +61,18 @@ export default function AssignmentDetailsPage() {
         const combined = taskLinks.map((link: any) => {
           const task = link.hw_tasks
           const submission = submissions?.find(s => s.task_id === task.id)
-          return { ...task, submission: submission || null }
+          
+          // Парсим sub_questions, если пришла строка
+          let parsedSubQuestions = [];
+          if (task.sub_questions) {
+            if (typeof task.sub_questions === 'string') {
+              try { parsedSubQuestions = JSON.parse(task.sub_questions); } catch (e) { parsedSubQuestions = []; }
+            } else if (Array.isArray(task.sub_questions)) {
+              parsedSubQuestions = task.sub_questions;
+            }
+          }
+          
+          return { ...task, sub_questions: parsedSubQuestions, submission: submission || null }
         })
         setStudentTasks(combined)
       }
@@ -105,7 +116,7 @@ export default function AssignmentDetailsPage() {
     }
   }
 
-    const stats = useMemo(() => {
+  const stats = useMemo(() => {
     let testTasks = 0;
     let testCorrect = 0;
     let manualTasks = 0;
@@ -115,21 +126,16 @@ export default function AssignmentDetailsPage() {
     studentTasks.forEach(t => {
       const hasSubs = t.sub_questions && t.sub_questions.length > 0;
       
-      // Если есть подвопросы ИЛИ это тестовое задание (не manual) — считаем его тестовым
+      // Если есть подвопросы ИЛИ это тестовое — считаем тестовым
       if (hasSubs || t.answer_type !== 'manual') {
         testTasks++;
-        // Если задание с подвопросами, считаем его "верным", только если все подвопросы верны
         if (hasSubs) {
           const allSubsCorrect = t.submission?.sub_results && Object.values(t.submission.sub_results).every(v => v === true);
           if (allSubsCorrect) testCorrect++;
         } else {
-          // Обычное тестовое задание
-          if (t.submission && t.submission.is_correct === true) {
-            testCorrect++;
-          }
+          if (t.submission && t.submission.is_correct === true) testCorrect++;
         }
       } else {
-        // Развернутое задание (только для ручной проверки)
         manualTasks++;
         manualMaxScore += t.max_score || 1;
         if (t.submission && t.submission.score !== null) {
@@ -256,8 +262,6 @@ export default function AssignmentDetailsPage() {
                       <p className="text-xs font-bold text-gray-500 uppercase mb-2">Ответ ученика:</p>
                       {task.submission ? (
                         <div className="flex flex-col gap-3">
-                          
-                          {/* ОТОБРАЖЕНИЕ ПОДВОПРОСОВ */}
                           {hasSubQuestions ? (
                             <div className="space-y-2">
                               {task.sub_questions.map((q: any, subIndex: number) => {
@@ -299,7 +303,6 @@ export default function AssignmentDetailsPage() {
                             </>
                           )}
 
-                          {/* Оценка для тестовых заданий (если НЕТ подвопросов) */}
                           {task.answer_type !== 'manual' && !hasSubQuestions && (
                             <div className="flex items-center gap-2 mt-2">
                               <button
@@ -325,7 +328,6 @@ export default function AssignmentDetailsPage() {
                             </div>
                           )}
 
-                          {/* Оценка для развернутых заданий (если НЕТ подвопросов) */}
                           {task.answer_type === 'manual' && !hasSubQuestions && (
                             <div className="flex items-center gap-2 mt-2">
                               <label className="text-sm text-gray-700">Баллы:</label>
@@ -341,7 +343,6 @@ export default function AssignmentDetailsPage() {
                             </div>
                           )}
 
-                          {/* Если есть подвопросы, показываем итоговый балл */}
                           {hasSubQuestions && (
                             <div className="mt-2 text-sm font-medium">
                               Итоговый балл: {task.submission.score || 0} из {task.max_score || 1}
