@@ -55,7 +55,11 @@ export default function DashboardPage() {
             const myTasks = tasksData?.filter(t => t.assignment_id === link.assignment_id) || []
             const totalTasks = myTasks.length
             
-            const totalMaxScore = myTasks.reduce((sum, t) => sum + (t.hw_tasks?.max_score || 1), 0)
+            const totalMaxScore = myTasks.reduce((sum, t) => {
+              // hw_tasks может быть массивом или объектом, берем первый элемент, если это массив
+              const taskData = Array.isArray(t.hw_tasks) ? t.hw_tasks[0] : t.hw_tasks;
+              return sum + (taskData?.max_score || 1);
+            }, 0)
 
             const mySubmissions = submissionsData?.filter(s => s.assignment_id === link.assignment_id) || []
             
