@@ -117,28 +117,31 @@ export default function AssignmentDetailsPage() {
     }
   }
 
-    const stats = useMemo(() => {
-    let testTasks = 0;
-    let testCorrect = 0;
-    let manualTasks = 0;
+      const stats = useMemo(() => {
+    let testScore = 0;
+    let testMaxScore = 0;
     let manualScore = 0;
     let manualMaxScore = 0;
 
     studentTasks.forEach(t => {
-      // ГЛАВНАЯ ПРОВЕРКА: если у ответа есть sub_results, это задание с подвопросами
+      // Если у ответа есть sub_results, это задание с подвопросами
       const hasSubResults = t.submission?.sub_results && Object.keys(t.submission.sub_results).length > 0;
       
-      if (hasSubResults || t.answer_type !== 'manual') {
-        testTasks++;
-        if (hasSubResults) {
-          // Считаем верным, если все подвопросы верны
-          const allTrue = Object.values(t.submission.sub_results).every(v => v === true);
-          if (allTrue) testCorrect++;
-        } else {
-          if (t.submission && t.submission.is_correct === true) testCorrect++;
+      if (hasSubResults) {
+        // Для подвопросов считаем каждый подвопрос как отдельный балл
+        const subCount = Object.keys(t.submission.sub_results).length;
+        const correctCount = Object.values(t.submission.sub_results).filter(v => v === true).length;
+        
+        testScore += correctCount;
+        testMaxScore += subCount;
+      } else if (t.answer_type !== 'manual') {
+        // Обычное тестовое задание (1 балл)
+        testMaxScore += 1;
+        if (t.submission && t.submission.is_correct === true) {
+          testScore += 1;
         }
       } else {
-        manualTasks++;
+        // Развернутое задание (ручная проверка)
         manualMaxScore += t.max_score || 1;
         if (t.submission && t.submission.score !== null) {
           manualScore += t.submission.score;
@@ -147,10 +150,9 @@ export default function AssignmentDetailsPage() {
     });
 
     return {
-      testTasks,
-      testCorrect,
-      testPercent: testTasks > 0 ? Math.round((testCorrect / testTasks) * 100) : 0,
-      manualTasks,
+      testScore,
+      testMaxScore,
+      testPercent: testMaxScore > 0 ? Math.round((testScore / testMaxScore) * 100) : 0,
       manualScore,
       manualMaxScore,
       manualPercent: manualMaxScore > 0 ? Math.round((manualScore / manualMaxScore) * 100) : 0
@@ -197,7 +199,7 @@ export default function AssignmentDetailsPage() {
                       {stats.testPercent}%
                     </p>
                     <p className="text-sm text-gray-500 mb-1">
-                      ({stats.testCorrect} из {stats.testTasks})
+                      ({stats.testScore} из {stats.testMaxScore})
                     </p>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
