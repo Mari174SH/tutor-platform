@@ -25,7 +25,6 @@ export default function StudentAssignmentPage() {
   const [files, setFiles] = useState<Record<number, File[]>>({})
   const [results, setResults] = useState<Record<number, boolean>>({})
   const [subResults, setSubResults] = useState<Record<number, Record<number, boolean>>>({})
-  // Добавляем состояние для баллов
   const [scores, setScores] = useState<Record<number, number | null>>({})
   const [submitted, setSubmitted] = useState(false)
 
@@ -82,13 +81,16 @@ export default function StudentAssignmentPage() {
             savedSubResults[sub.task_id] = sub.sub_results
           }
 
-          // Сохраняем баллы
           if (sub.score !== undefined) {
             savedScores[sub.task_id] = sub.score
           }
 
           if (sub.is_correct !== null) {
             savedResults[sub.task_id] = sub.is_correct
+          }
+
+          // Если хотя бы одна запись помечена как отправленная — блокируем
+          if (sub.is_submitted === true) {
             isSubmitted = true
           }
         })
@@ -117,6 +119,7 @@ export default function StudentAssignmentPage() {
       student_id: user.id,
       answer_text: text,
       is_correct: null,
+      is_submitted: false, // Это черновик
       submitted_at: new Date().toISOString()
     }, { onConflict: 'assignment_id, task_id, student_id' })
   }, [assignmentId, supabase])
@@ -236,6 +239,7 @@ export default function StudentAssignmentPage() {
             is_correct: isCorrect,
             score: calculatedScore,
             sub_results: currentSubResults,
+            is_submitted: true, // ФИНАЛЬНАЯ ОТПРАВКА
             images: imageUrls,
             submitted_at: new Date().toISOString()
           };
@@ -260,6 +264,7 @@ export default function StudentAssignmentPage() {
           is_correct: isCorrect,
           score: autoScore,
           sub_results: null,
+          is_submitted: true, // ФИНАЛЬНАЯ ОТПРАВКА
           images: imageUrls,
           submitted_at: new Date().toISOString()
         }
@@ -428,7 +433,6 @@ export default function StudentAssignmentPage() {
                   </div>
                 )}
 
-                {/* Отображение баллов для развернутых заданий */}
                 {submitted && task.answer_type === 'manual' && !hasSubQuestions && taskScore !== undefined && taskScore !== null && (
                   <div className="mt-3 p-3 rounded-md text-sm bg-blue-50 text-blue-700 font-medium">
                     Баллы за задание: {taskScore} из {task.max_score || 1}
