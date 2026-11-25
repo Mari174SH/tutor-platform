@@ -45,10 +45,9 @@ export default function AssignmentDetailsPage() {
     if (!selectedStudentId) return
 
     const fetchStudentAnswers = async () => {
-      // ВАЖНО: Запрашиваем sub_questions
       const { data: taskLinks } = await supabase
         .from('hw_assignment_tasks')
-        .select('task_id, position, hw_tasks(id, title, content_html, answer_text, answer_type, images, max_score, sub_questions)')
+        .select('task_id, position, hw_tasks(id, title, content_html, answer_text, solution_html, answer_type, images, max_score, sub_questions)')
         .eq('assignment_id', assignmentId)
         .order('position')
 
@@ -63,7 +62,6 @@ export default function AssignmentDetailsPage() {
           const task = link.hw_tasks
           const submission = submissions?.find(s => s.task_id === task.id)
           
-          // Парсим sub_questions, если пришла строка
           let parsedSubQuestions = [];
           if (task.sub_questions) {
             if (typeof task.sub_questions === 'string') {
@@ -117,31 +115,27 @@ export default function AssignmentDetailsPage() {
     }
   }
 
-      const stats = useMemo(() => {
+  const stats = useMemo(() => {
     let testScore = 0;
     let testMaxScore = 0;
     let manualScore = 0;
     let manualMaxScore = 0;
 
     studentTasks.forEach(t => {
-      // Если у ответа есть sub_results, это задание с подвопросами
       const hasSubResults = t.submission?.sub_results && Object.keys(t.submission.sub_results).length > 0;
       
       if (hasSubResults) {
-        // Для подвопросов считаем каждый подвопрос как отдельный балл
         const subCount = Object.keys(t.submission.sub_results).length;
         const correctCount = Object.values(t.submission.sub_results).filter(v => v === true).length;
         
         testScore += correctCount;
         testMaxScore += subCount;
       } else if (t.answer_type !== 'manual') {
-        // Обычное тестовое задание (1 балл)
         testMaxScore += 1;
         if (t.submission && t.submission.is_correct === true) {
           testScore += 1;
         }
       } else {
-        // Развернутое задание (ручная проверка)
         manualMaxScore += t.max_score || 1;
         if (t.submission && t.submission.score !== null) {
           manualScore += t.submission.score;
@@ -333,18 +327,34 @@ export default function AssignmentDetailsPage() {
                           )}
 
                           {task.answer_type === 'manual' && !hasSubQuestions && (
-                            <div className="flex items-center gap-2 mt-2">
-                              <label className="text-sm text-gray-700">Баллы:</label>
-                              <input
-                                type="number"
-                                min="0"
-                                max={task.max_score || 1}
-                                value={task.submission.score || 0}
-                                onChange={(e) => handleSaveScore(task.submission.id, parseInt(e.target.value) || 0)}
-                                className="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
-                              />
-                              <span className="text-sm text-gray-500">из {task.max_score || 1}</span>
-                            </div>
+                            <>
+                              <div className="flex items-center gap-2 mt-2">
+                                <label className="text-sm text-gray-700">Баллы:</label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={task.max_score || 1}
+                                  value={task.submission.score || 0}
+                                  onChange={(e) => handleSaveScore(task.submission.id, parseInt(e.target.value) || 0)}
+                                  className="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
+                                />
+                                <span className="text-sm text-gray-500">из {task.max_score || 1}</span>
+                              </div>
+                              
+                              {/* Эталон и решение (видно только репетитору) */}
+                              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                                <p className="text-xs font-bold text-yellow-800 uppercase mb-1">Эталон (видно только вам):</p>
+                                <div className="text-sm text-gray-800 whitespace-pre-wrap">
+                                  {task.answer_text || 'Не указан'}
+                                </div>
+                                {task.solution_html && (
+                                  <div className="mt-2 pt-2 border-t border-yellow-200">
+                                    <p className="text-xs font-bold text-yellow-800 uppercase mb-1">Решение:</p>
+                                    <div className="text-sm text-gray-800 whitespace-pre-wrap">{task.solution_html}</div>
+                                  </div>
+                                )}
+                              </div>
+                            </>
                           )}
 
                           {hasSubQuestions && (
