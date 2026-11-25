@@ -23,11 +23,13 @@ function EditTaskContent() {
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [answerText, setAnswerText] = useState('')
+  const [solution, setSolution] = useState('')
   const [answerType, setAnswerType] = useState('numeric')
   const [selectedTopicId, setSelectedTopicId] = useState('')
   const [selectedSubtopicId, setSelectedSubtopicId] = useState('')
   const [existingImages, setExistingImages] = useState<string[]>([])
   const [files, setFiles] = useState<File[]>([])
+  const [subQuestions, setSubQuestions] = useState<{text: string, answer: string}[]>([])
 
   const returnTopic = searchParams.get('returnTopic') || ''
   const returnSubtopic = searchParams.get('returnSubtopic') || ''
@@ -67,10 +69,22 @@ function EditTaskContent() {
       setTitle(data.title || '')
       setContent(data.content_html || '')
       setAnswerText(data.answer_text || '')
+      setSolution(data.solution_html || '')
       setAnswerType(data.answer_type || 'numeric')
       setSelectedTopicId(data.topic_id ? String(data.topic_id) : '')
       setSelectedSubtopicId(data.subtopic_id ? String(data.subtopic_id) : '')
       setExistingImages(data.images || [])
+      
+      let parsedSubs = [];
+      if (data.sub_questions) {
+        if (typeof data.sub_questions === 'string') {
+          try { parsedSubs = JSON.parse(data.sub_questions); } catch (e) {}
+        } else if (Array.isArray(data.sub_questions)) {
+          parsedSubs = data.sub_questions;
+        }
+      }
+      setSubQuestions(parsedSubs);
+
       setLoading(false)
     }
 
@@ -110,16 +124,24 @@ function EditTaskContent() {
     }
   }
 
+  const addSubQuestion = () => {
+    setSubQuestions(prev => [...prev, { text: '', answer: '' }])
+  }
+
+  const updateSubQuestion = (index: number, field: 'text' | 'answer', value: string) => {
+    setSubQuestions(prev => prev.map((q, i) => i === index ? { ...q, [field]: value } : q))
+  }
+
+  const removeSubQuestion = (index: number) => {
+    setSubQuestions(prev => prev.filter((_, i) => i !== index))
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
     setError(null)
 
     try {
-      // Берем балл из темы
-      const topic = topics.find(t => t.id === parseInt(selectedTopicId))
-      const maxScore = topic?.max_score || 1
-
       const newImageUrls: string[] = []
       for (const file of files) {
         const fileExt = file.name.split('.').pop() || 'png'
@@ -137,10 +159,11 @@ function EditTaskContent() {
         content_html: content,
         answer_text: answerText,
         answer_type: answerType,
-        max_score: maxScore, // Берем из темы
+        solution_html: solution,
         images: allImages,
         topic_id: selectedTopicId ? parseInt(selectedTopicId) : null,
         subtopic_id: selectedSubtopicId ? parseInt(selectedSubtopicId) : null,
+        sub_questions: subQuestions,
       }).eq('id', taskId)
 
       if (updateError) throw updateError
@@ -237,25 +260,73 @@ function EditTaskContent() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Тип ответа</label>
-              <select value={answerType} onChange={(e) => setAnswerType(e.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2">
-                <option value="numeric">Число</option>
-                <option value="exact">Точный текст</option>
-                <option value="manual">Ручная проверка (развернутый)</option>
-              </select>
+          <div className="border-t pt-4">
+            <div className="flex justify-between items-center mb-3">
+              <label className="block text-sm font-medium text-gray-700">Подвопросы (для заданий 1-5 ОГЭ)</label>
+              <button type="button" onClick={addSubQuestion} className="text-sm text-blue-600 hover:underline">
+                + Добавить подвопрос
+              </button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Правильный ответ</label>
-              <input 
-                type="text" 
-                value={answerText} 
-                onChange={(e) => handleAnswerChange(e.target.value)} 
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" 
-              />
-            </div>
+            
+            {subQuestions.map((q, index) => (
+              <div key={index} className="flex gap-2 mb-2 items-start">
+                <div className="flex-1">
+                  <input 
+                    type="text" 
+                    placeholder="Текст вопроса" 
+                    value={q.text} 
+                    onChange={(e) => updateSubQuestion(index, 'text', e.target.value)} 
+                    className="w-full rounded border px-2 py-1 text-sm" 
+                  />
+                </div>
+                <div className="w-24">
+                  <input 
+                    type="text" 
+                    placeholder="Ответ" 
+                    value={q.answer} 
+                    onChange={(e) => updateSubQuestion(index, 'answer', e.target.value)} 
+                    className="w-full rounded border px-2 py-1 text-sm" 
+                  />
+                </div>
+                <button type="button" onClick={() => removeSubQuestion(index)} className="text-red-500 font-bold px-2 py-1">✕</button>
+              </div>
+            ))}
+            {subQuestions.length === 0 && <p className="text-xs text-gray-500">Нет подвопросов.</p>}
           </div>
+
+          {subQuestions.length === 0 && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Тип ответа</label>
+                  <select value={answerType} onChange={(e) => setAnswerType(e.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2">
+                    <option value="numeric">Число</option>
+                    <option value="exact">Точный текст</option>
+                    <option value="manual">Ручная проверка (развернутый)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Правильный ответ</label>
+                  <input 
+                    type="text" 
+                    value={answerText} 
+                    onChange={(e) => handleAnswerChange(e.target.value)} 
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2" 
+                  />
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <label className="block text-sm font-medium text-gray-700">Решение (видно только репетитору)</label>
+                <textarea
+                  rows={4}
+                  value={solution}
+                  onChange={(e) => setSolution(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                />
+              </div>
+            </>
+          )}
 
           <button type="submit" disabled={saving} className="w-full rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-500 disabled:opacity-50">
             {saving ? 'Сохранение...' : 'Сохранить изменения'}
