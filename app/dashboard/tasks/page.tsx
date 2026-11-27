@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '../../supabase'
 import Link from 'next/link'
 import MathText from '../../components/MathText'
 
-export default function TasksPage() {
+function TasksContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = useMemo(() => createClient(), [])
@@ -16,7 +16,6 @@ export default function TasksPage() {
   const [subtopics, setSubtopics] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Фильтры берем из URL (если они там есть)
   const [selectedTopic, setSelectedTopic] = useState(searchParams.get('topic') || '')
   const [selectedSubtopic, setSelectedSubtopic] = useState(searchParams.get('subtopic') || '')
 
@@ -31,16 +30,24 @@ export default function TasksPage() {
     const { data: topicsData } = await supabase.from('hw_topics').select('*').order('topic_number')
     if (topicsData) setTopics(topicsData)
 
+    // Сортируем задания: сначала по номеру задания, потом по ID
     const { data: tasksData } = await supabase
       .from('hw_tasks')
       .select('*')
-      .order('created_at', { ascending: false })
-    if (tasksData) setTasks(tasksData)
+    
+    if (tasksData) {
+      const sorted = tasksData.sort((a, b) => {
+        const numA = parseInt(a.task_number) || 999;
+        const numB = parseInt(b.task_number) || 999;
+        if (numA !== numB) return numA - numB;
+        return a.id - b.id;
+      })
+      setTasks(sorted)
+    }
 
     setLoading(false)
   }
 
-  // Обновляем URL при смене фильтров
   const updateUrl = (topic: string, subtopic: string) => {
     const params = new URLSearchParams()
     if (topic) params.set('topic', topic)
@@ -163,7 +170,6 @@ export default function TasksPage() {
               </div>
 
               <div className="flex flex-col gap-2 ml-4 shrink-0">
-                {/* Передаем фильтры в ссылку, чтобы вернуться обратно */}
                 <Link 
                   href={`/dashboard/tasks/edit/${task.id}?returnTopic=${selectedTopic}&returnSubtopic=${selectedSubtopic}`}
                   className="text-xs text-center rounded bg-blue-50 px-3 py-1.5 text-blue-600 hover:bg-blue-100 font-medium"
@@ -188,5 +194,13 @@ export default function TasksPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function TasksPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center">Загрузка...</div>}>
+      <TasksContent />
+    </Suspense>
   )
 }
