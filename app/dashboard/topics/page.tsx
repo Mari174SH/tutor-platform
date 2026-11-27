@@ -17,7 +17,7 @@ export default function TopicsPage() {
   const [newExam, setNewExam] = useState('ege')
   const [newSubject, setNewSubject] = useState('Математика')
   const [newNumber, setNewNumber] = useState('')
-  const [newMaxScore, setNewMaxScore] = useState(1) // Новое поле
+  const [newMaxScore, setNewMaxScore] = useState(1)
 
   const [subtopicTitle, setSubtopicTitle] = useState('')
   const [activeTopicId, setActiveTopicId] = useState<number | null>(null)
@@ -30,12 +30,20 @@ export default function TopicsPage() {
     const { data, error } = await supabase
       .from('hw_topics')
       .select('*, hw_subtopics(*)')
-      .order('created_at', { ascending: false })
+      .order('topic_number')
     
     if (error) {
       setErrorMsg('Ошибка загрузки тем: ' + error.message)
     }
-    if (data) setTopics(data)
+    if (data) {
+      // Сортируем по номеру как числа
+      const sorted = data.sort((a, b) => {
+        const numA = parseInt(a.topic_number) || 0
+        const numB = parseInt(b.topic_number) || 0
+        return numA - numB
+      })
+      setTopics(sorted)
+    }
     setLoading(false)
   }
 
@@ -51,7 +59,7 @@ export default function TopicsPage() {
         exam_type: newExam,
         subject: newSubject,
         topic_number: newNumber,
-        max_score: newMaxScore, // Сохраняем балл
+        max_score: newMaxScore,
       })
 
     if (error) {
