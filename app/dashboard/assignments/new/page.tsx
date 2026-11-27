@@ -12,36 +12,31 @@ export default function NewAssignmentPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Данные
   const [topics, setTopics] = useState<any[]>([])
   const [students, setStudents] = useState<any[]>([])
   
-  // Настройки ДЗ
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  
-  // Фильтр по экзамену
-  const [selectedExam, setSelectedExam] = useState('ege') 
-
-  // Выбранное количество задач по подтемам: { [subtopicId]: count }
+  const [selectedExam, setSelectedExam] = useState('ege')
   const [selectedCounts, setSelectedCounts] = useState<Record<string, number>>({})
-  
-  // Ученики и дедлайн
   const [selectedStudents, setSelectedStudents] = useState<string[]>([])
   const [deadline, setDeadline] = useState('')
 
-  // Загружаем темы со всеми подтемами и учеников
   useEffect(() => {
     const fetchData = async () => {
-      const { data: topicsData, error: topicsError } = await supabase
+      const { data: topicsData } = await supabase
         .from('hw_topics')
         .select('*, hw_subtopics(*)')
-        .order('topic_number')
       
-      if (topicsError) {
-        setError('Ошибка загрузки тем: ' + topicsError.message)
-      } else if (topicsData) {
-        const enhancedTopics = await Promise.all(topicsData.map(async (topic) => {
+      if (topicsData) {
+        // СОРТИРОВКА ТЕМ ПО НОМЕРУ (как числа)
+        const sortedTopics = topicsData.sort((a, b) => {
+          const numA = parseInt(a.topic_number) || 0
+          const numB = parseInt(b.topic_number) || 0
+          return numA - numB
+        })
+
+        const enhancedTopics = await Promise.all(sortedTopics.map(async (topic) => {
           const enhancedSubtopics = await Promise.all((topic.hw_subtopics || []).map(async (sub: any) => {
             const { count, error } = await supabase
               .from('hw_tasks')
@@ -63,7 +58,6 @@ export default function NewAssignmentPage() {
     fetchData()
   }, [supabase])
 
-  // Фильтруем темы по выбранному экзамену
   const filteredTopics = useMemo(() => {
     return topics.filter(t => t.exam_type === selectedExam)
   }, [topics, selectedExam])
@@ -88,14 +82,8 @@ export default function NewAssignmentPage() {
     e.preventDefault()
     
     const totalSelected = Object.values(selectedCounts).reduce((a, b) => a + b, 0)
-    if (totalSelected === 0) {
-      setError('Выберите хотя бы одну задачу (добавьте количество к любой подтеме)')
-      return
-    }
-    if (selectedStudents.length === 0) {
-      setError('Выберите хотя бы одного ученика')
-      return
-    }
+    if (totalSelected === 0) return setError('Выберите хотя бы одну задачу')
+    if (selectedStudents.length === 0) return setError('Выберите хотя бы одного ученика')
 
     setLoading(true)
     setError(null)
@@ -107,29 +95,19 @@ export default function NewAssignmentPage() {
       const taskIdsToAssign: number[] = []
 
       for (const [subtopicId, count] of Object.entries(selectedCounts)) {
-        const { data: availableTasks } = await supabase
-          .from('hw_tasks')
-          .select('id')
-          .eq('subtopic_id', subtopicId)
-
+        const { data: availableTasks } = await supabase.from('hw_tasks').select('id').eq('subtopic_id', subtopicId)
         if (!availableTasks || availableTasks.length === 0) continue
-
         const shuffled = availableTasks.sort(() => 0.5 - Math.random())
-        const selected = shuffled.slice(0, count)
-        
-        selected.forEach(t => taskIdsToAssign.push(t.id))
+        shuffled.slice(0, count).forEach(t => taskIdsToAssign.push(t.id))
       }
 
-      if (taskIdsToAssign.length === 0) {
-        throw new Error('В выбранных подтемах нет заданий в библиотеке')
-      }
+      if (taskIdsToAssign.length === 0) throw new Error('В выбранных подтемах нет заданий')
 
       const { data: assignment, error: assignError } = await supabase
         .from('hw_assignments')
         .insert({ tutor_id: user.id, title, description })
         .select()
         .single()
-
       if (assignError) throw assignError
 
       const taskLinks = taskIdsToAssign.map((taskId, index) => ({
@@ -143,7 +121,6 @@ export default function NewAssignmentPage() {
       const studentLinks = selectedStudents.map(studentId => ({
         assignment_id: assignment.id,
         student_id: studentId,
-        attempts_allowed: 1,
         deadline: deadline ? new Date(deadline).toISOString() : null,
       }))
       const { error: studentsError } = await supabase.from('hw_assignment_students').insert(studentLinks)
@@ -178,7 +155,6 @@ export default function NewAssignmentPage() {
             </div>
           </div>
 
-          {/* Фильтр по экзамену */}
           <div className="rounded-lg bg-white p-6 shadow space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Экзамен</label>
@@ -205,7 +181,6 @@ export default function NewAssignmentPage() {
             </div>
           </div>
 
-          {/* Выбор тем и количества задач */}
           <div className="rounded-lg bg-white p-6 shadow">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-medium text-gray-900">1. Выберите темы и количество задач ({selectedExam.toUpperCase()})</h2>
@@ -256,7 +231,6 @@ export default function NewAssignmentPage() {
             </div>
           </div>
 
-          {/* Настройки учеников */}
           <div className="rounded-lg bg-white p-6 shadow space-y-4">
             <h2 className="text-lg font-medium text-gray-900 mb-2">2. Кому назначить ({selectedStudents.length} выбрано)</h2>
             
